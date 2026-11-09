@@ -1,0 +1,825 @@
+/* ==========================================================================
+   OneNote Style for Obsidian
+   ========================================================================== */
+
+body {
+  --onenote-purple: #7719AA;
+  --onenote-purple-dark: #5B1384;
+  --onenote-tabrow-bg: #7719AA;
+  --onenote-tabrow-text: #FFFFFF;
+  --onenote-ribbon-bg: #F3F2F1;
+  --onenote-ribbon-border: #DADADA;
+  --onenote-hover: rgba(119, 25, 170, 0.10);
+  --onenote-pressed: rgba(119, 25, 170, 0.20);
+  --onenote-rule-color: #C5DAEE;
+  --onenote-grid-color: #DCE7F2;
+  --onenote-section-color: #B4B4B4;
+  --onenote-rule: 24px;
+}
+
+.theme-dark {
+  --onenote-purple: #B47FDC;
+  --onenote-purple-dark: #9B5DC9;
+  --onenote-tabrow-bg: #3A1452;
+  --onenote-ribbon-bg: #262626;
+  --onenote-ribbon-border: #3A3A3A;
+  --onenote-hover: rgba(190, 140, 230, 0.14);
+  --onenote-pressed: rgba(190, 140, 230, 0.26);
+  --onenote-rule-color: #33475C;
+  --onenote-grid-color: #2C3A48;
+}
+
+/* ---------- Theme (accent, fonts) ---------- */
+
+body.onenote-theme {
+  --font-interface-theme: var(--onenote-ui-font);
+  --font-text-theme: var(--onenote-page-font);
+}
+
+body.onenote-theme.theme-light {
+  --interactive-accent: #7719AA;
+  --interactive-accent-hover: #5B1384;
+  --text-accent: #7719AA;
+  --text-accent-hover: #5B1384;
+  --color-accent: #7719AA;
+  --color-accent-1: #8A2BBF;
+  --color-accent-2: #9E43CF;
+  --checkbox-color: #7719AA;
+  --checkbox-color-hover: #5B1384;
+  --text-selection: rgba(119, 25, 170, 0.18);
+  --link-color: #2A6FC9;
+  --link-external-color: #2A6FC9;
+}
+
+body.onenote-theme.theme-dark {
+  --interactive-accent: #8E3FC4;
+  --interactive-accent-hover: #A45AD6;
+  --text-accent: #C39BE0;
+  --text-accent-hover: #D7B8EE;
+  --color-accent: #A45AD6;
+  --color-accent-1: #B47FDC;
+  --color-accent-2: #C39BE0;
+  --checkbox-color: #A45AD6;
+  --checkbox-color-hover: #B47FDC;
+  --text-selection: rgba(180, 127, 220, 0.25);
+}
+
+body.onenote-has-font-size .workspace-leaf-content[data-type="markdown"],
+body.onenote-has-font-size .canvas-node-content {
+  --font-text-size: var(--onenote-font-size);
+}
+body.onenote-has-font-size .workspace-leaf-content[data-type="markdown"] .markdown-source-view,
+body.onenote-has-font-size .workspace-leaf-content[data-type="markdown"] .markdown-preview-view {
+  font-size: var(--onenote-font-size);
+}
+
+body.onenote-width-wide { --file-line-width: 960px; }
+body.onenote-width-full { --file-line-width: 100%; }
+
+body.onenote-hide-obsidian-ribbon .workspace-ribbon.mod-left { display: none; }
+
+/* OneNote-style page title with a thin underline and the date/time below it */
+body.onenote-theme .inline-title {
+  font-family: "Calibri Light", var(--onenote-page-font);
+  font-weight: 400;
+  font-size: 2em;
+  letter-spacing: 0;
+  max-width: 32em;
+  padding-bottom: 2px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.onenote-page-date {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2.5em;
+  width: 100%;
+  white-space: nowrap;
+  margin: 0 0 1.6em;
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: 0.82em;
+  user-select: none;
+  cursor: default;
+}
+
+/* ---------- Layout: put the top bar above the workspace ---------- */
+
+body.onenote-has-topbar .app-container {
+  display: flex;
+  flex-direction: column;
+}
+body.onenote-has-topbar .app-container > .horizontal-main-container {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+
+.onenote-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-interface);
+  user-select: none;
+  z-index: 5;
+}
+
+.onenote-topbar button {
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-normal);
+  height: auto;
+  padding: 2px 4px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.onenote-topbar button:hover { background: var(--onenote-hover); }
+.onenote-topbar button:active,
+.onenote-topbar button.is-active { background: var(--onenote-pressed); border-color: var(--onenote-pressed); }
+
+/* Tab row (purple bar with Home / Insert / View) */
+.onenote-tabrow {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--onenote-tabrow-bg);
+  color: var(--onenote-tabrow-text);
+}
+
+/* Only the empty spacer is a window-drag area. Making the whole row draggable
+   swallowed clicks on Obsidian's Minimize / Maximize / Close buttons. */
+.onenote-tabrow { position: relative; -webkit-app-region: no-drag; }
+body.is-hidden-frameless:not(.is-fullscreen) .onenote-tabrow-spacer { -webkit-app-region: drag; }
+body.is-hidden-frameless .titlebar-button-container,
+body.is-hidden-frameless .titlebar-button { -webkit-app-region: no-drag !important; }
+body.onenote-has-topbar .titlebar-button-container { z-index: 1000; }
+body.is-hidden-frameless.mod-windows:not(.is-fullscreen) .onenote-tabrow,
+body.is-hidden-frameless.mod-linux:not(.is-fullscreen) .onenote-tabrow {
+  padding-right: max(var(--frame-right-space, 0px), 145px);
+}
+body.is-hidden-frameless.mod-macos:not(.is-fullscreen) .onenote-tabrow {
+  padding-left: max(var(--frame-left-space, 0px), 80px);
+}
+body.is-hidden-frameless.onenote-has-topbar .titlebar,
+body.is-hidden-frameless.onenote-has-topbar .titlebar-inner { -webkit-app-region: no-drag; }
+.onenote-tabrow > *:not(.onenote-tabrow-spacer) { -webkit-app-region: no-drag; }
+
+/* Top left: Obsidian pins its "toggle left sidebar" button to the top of the
+   window, where it covered Undo / Redo. Anchor it to the icon strip instead,
+   so it drops into the empty slot above the strip's icons. */
+body.onenote-has-topbar .workspace-ribbon.mod-primary,
+body.onenote-has-topbar .workspace-ribbon.mod-left {
+  position: relative;
+  margin-top: 0;
+  padding-top: calc(var(--header-height) + var(--size-4-2));
+}
+
+/* Top right (Windows): Minimise / Maximise / Close sit in their own box with
+   Obsidian's title-bar colour. Paint it like the tab row, with white icons.
+   Close keeps Obsidian's own red hover. */
+body.onenote-has-topbar.is-hidden-frameless:not(.is-fullscreen) .titlebar-button-container.mod-right {
+  background-color: var(--onenote-tabrow-bg) !important;
+  height: 32px;
+}
+body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button {
+  color: var(--onenote-tabrow-text) !important;
+  height: 32px;
+}
+body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:not(.mod-close):hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.onenote-qat { display: flex; align-items: center; gap: 2px; margin-right: 10px; }
+.onenote-tabrow button { color: var(--onenote-tabrow-text); }
+.onenote-tabrow button:hover { background: rgba(255, 255, 255, 0.16); }
+.onenote-tabrow .onenote-btn-icon svg { width: 15px; height: 15px; }
+
+.onenote-tabs { display: flex; align-items: flex-end; gap: 2px; }
+.onenote-tab {
+  padding: 0 16px;
+  height: 28px;
+  line-height: 28px;
+  font-size: 13px;
+  color: var(--onenote-tabrow-text);
+  border-radius: 3px 3px 0 0;
+  cursor: pointer;
+}
+.onenote-tab:hover { background: rgba(255, 255, 255, 0.16); }
+.onenote-tab.is-active {
+  background: var(--onenote-ribbon-bg);
+  color: var(--onenote-purple);
+  font-weight: 600;
+}
+.onenote-topbar.is-ribbon-collapsed .onenote-tab.is-active {
+  background: transparent;
+  color: var(--onenote-tabrow-text);
+  box-shadow: inset 0 -2px 0 var(--onenote-tabrow-text);
+}
+
+.onenote-tabrow-spacer { flex: 1 1 auto; }
+
+.onenote-search {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  width: min(360px, 32vw);
+  /* Centered in the purple bar, like OneNote */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  padding: 0 8px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.onenote-search-icon { display: flex; color: var(--onenote-tabrow-text); }
+.onenote-search-icon svg { width: 14px; height: 14px; }
+.onenote-search input[type="search"] {
+  flex: 1;
+  height: 22px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--onenote-tabrow-text);
+  font-size: 12px;
+  padding: 0;
+}
+.onenote-search input::placeholder { color: rgba(255, 255, 255, 0.75); }
+.onenote-search:focus-within { background: var(--background-primary); }
+.onenote-search:focus-within input,
+.onenote-search:focus-within .onenote-search-icon { color: var(--text-normal); }
+
+/* Ribbon */
+.onenote-ribbon {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 92px;
+  padding: 4px 28px 0 4px;
+  background: var(--onenote-ribbon-bg);
+  border-bottom: 1px solid var(--onenote-ribbon-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.onenote-ribbon::-webkit-scrollbar { height: 4px; }
+.onenote-ribbon::-webkit-scrollbar-thumb { background: var(--onenote-ribbon-border); border-radius: 2px; }
+.onenote-topbar.is-ribbon-collapsed .onenote-ribbon { display: none; }
+body.onenote-fullpage .onenote-ribbon,
+body.onenote-fullpage .onenote-section-tabs { display: none; }
+
+.onenote-ribbon-collapse {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  padding: 2px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.onenote-ribbon-collapse:hover { background: var(--onenote-hover); }
+.onenote-ribbon-collapse svg { width: 14px; height: 14px; }
+
+.onenote-group {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-right: 1px solid var(--onenote-ribbon-border);
+}
+.onenote-group:last-of-type { border-right: none; }
+.onenote-group-body { flex: 1; display: flex; align-items: flex-start; gap: 2px; }
+.onenote-group-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1px 0 3px;
+  white-space: nowrap;
+}
+
+.onenote-col { display: flex; flex-direction: column; gap: 1px; }
+.onenote-row { display: flex; align-items: center; gap: 1px; }
+.onenote-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--onenote-ribbon-border); }
+
+.onenote-btn-icon { display: inline-flex; align-items: center; justify-content: center; }
+.onenote-btn.is-small .onenote-btn-icon svg { width: 16px; height: 16px; }
+.onenote-btn.is-small { min-width: 26px; height: 26px; justify-content: center; }
+.onenote-btn.is-small.has-label { justify-content: flex-start; height: 22px; }
+
+.onenote-topbar button.onenote-btn.is-big {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 52px;
+  height: 66px;
+  padding: 4px 6px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+.onenote-btn.is-big .onenote-btn-icon svg { width: 28px; height: 28px; stroke-width: 1.5; }
+.onenote-btn.is-big .onenote-btn-label { max-width: 70px; }
+.onenote-btn-caret { display: inline-flex; }
+.onenote-btn-caret svg { width: 10px; height: 10px; }
+
+.onenote-btn .onenote-btn-icon svg { color: var(--text-normal); }
+.onenote-btn.is-big .onenote-btn-icon svg { color: var(--onenote-purple); }
+.onenote-tabrow .onenote-btn .onenote-btn-icon svg { color: var(--onenote-tabrow-text); }
+
+.onenote-split { display: inline-flex; align-items: center; }
+.onenote-topbar button.onenote-caret-btn { min-width: 12px; width: 13px; padding: 2px 0; }
+.onenote-caret-btn svg { width: 10px !important; height: 10px !important; }
+.onenote-hl-btn .onenote-btn-icon { box-shadow: inset 0 -4px 0 #FFF100; }
+.onenote-fc-btn .onenote-btn-icon { box-shadow: inset 0 -3px 0 #C00000; }
+
+/* AI group: the running sync moves, the others wait */
+.onenote-topbar button.onenote-ai-btn.is-syncing {
+  background: var(--onenote-pressed);
+  border-color: var(--onenote-pressed);
+  cursor: progress;
+}
+.onenote-topbar button.onenote-ai-btn.is-locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.onenote-topbar button.onenote-ai-btn.is-unavailable { opacity: 0.65; }
+.onenote-ai-btn.is-big.is-syncing .onenote-btn-icon svg { animation: onenote-ai-spin 1.1s linear infinite; }
+.onenote-ai-btn.is-small.is-syncing .onenote-btn-icon svg { animation: onenote-ai-pulse 1.1s ease-in-out infinite; }
+@keyframes onenote-ai-spin { to { transform: rotate(360deg); } }
+@keyframes onenote-ai-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .onenote-ai-btn.is-syncing .onenote-btn-icon svg { animation: none; }
+}
+
+/* Styles gallery */
+.onenote-style-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 88px);
+  grid-auto-rows: 21px;
+  gap: 2px;
+  padding: 2px;
+  background: var(--background-primary);
+  border: 1px solid var(--onenote-ribbon-border);
+}
+.onenote-style-item {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--onenote-page-font);
+  font-size: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.onenote-style-item:hover { border-color: var(--onenote-purple); background: var(--onenote-hover); }
+.onenote-style-item[data-style="1"] { font-size: 15px; color: #1E4E79; }
+.onenote-style-item[data-style="2"] { font-size: 14px; color: #2E75B5; font-weight: 600; }
+.onenote-style-item[data-style="3"] { font-size: 13px; color: #1F3864; font-weight: 600; }
+.onenote-style-item[data-style="4"] { font-size: 12px; color: #2E75B5; font-style: italic; }
+.onenote-style-item[data-style="quote"] { font-style: italic; color: #595959; }
+.theme-dark .onenote-style-item[data-style="1"],
+.theme-dark .onenote-style-item[data-style="2"],
+.theme-dark .onenote-style-item[data-style="3"],
+.theme-dark .onenote-style-item[data-style="4"] { color: #8DB8E8; }
+.theme-dark .onenote-style-item[data-style="quote"] { color: var(--text-muted); }
+
+/* Tags gallery */
+.onenote-tag-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 132px);
+  grid-auto-rows: 21px;
+  gap: 1px;
+  padding: 2px;
+  margin-right: 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--onenote-ribbon-border);
+}
+.onenote-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.onenote-tag-item:hover { border-color: var(--onenote-purple); background: var(--onenote-hover); }
+
+.onenote-tag-icon { display: inline-flex; flex: 0 0 auto; }
+.onenote-tag-icon svg { width: 14px; height: 14px; }
+.onenote-tag-icon[data-tag="todo"] { color: #2E75B5; }
+.onenote-tag-icon[data-tag="important"] { color: #F2A900; }
+.onenote-tag-icon[data-tag="important"] svg { fill: #FFC83D; }
+.onenote-tag-icon[data-tag="question"] { color: #7719AA; }
+.onenote-tag-icon[data-tag="remember"] { color: #C9A800; }
+.onenote-tag-icon[data-tag="definition"] { color: #2E8B3A; }
+.onenote-tag-icon[data-tag="idea"] { color: #E39B00; }
+
+/* ---------- Section tabs ---------- */
+
+.onenote-section-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 34px;
+  padding: 5px 8px 0;
+  background: var(--background-secondary);
+  border-bottom: 3px solid var(--onenote-section-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.onenote-nb-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  margin: 0 10px 2px 0;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--onenote-purple);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.onenote-nb-switch:hover { background: var(--onenote-hover); }
+.onenote-nb-switch .onenote-nb-icon svg { width: 18px; height: 18px; }
+.onenote-nb-switch-caret svg { width: 12px; height: 12px; }
+
+.onenote-section-tab {
+  --tab-color: #C8C8C8;
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 4px 14px;
+  border-radius: 5px 5px 0 0;
+  background: color-mix(in srgb, var(--tab-color) 62%, var(--background-primary));
+  color: #1B1B1B;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.onenote-section-tab:hover { background: var(--tab-color); }
+.onenote-section-tab.is-active {
+  background: var(--tab-color);
+  font-weight: 600;
+  padding-top: 6px;
+}
+.onenote-section-tab.is-add {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--text-muted);
+}
+.onenote-section-tab.is-add:hover { background: var(--background-modifier-hover); }
+.onenote-section-tab.is-add svg { width: 14px; height: 14px; }
+.onenote-section-tab.is-drop-target { outline: 2px solid var(--onenote-purple); outline-offset: -2px; }
+
+/* ---------- Notebook pane ---------- */
+
+.onenote-nav.view-content,
+.onenote-pages.view-content { padding: 0; }
+
+.onenote-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--onenote-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.onenote-pane-header-btn { display: flex; padding: 2px; border-radius: 3px; cursor: pointer; color: var(--text-muted); }
+.onenote-pane-header-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.onenote-pane-header-btn svg { width: 16px; height: 16px; }
+
+.onenote-nb-list { padding-bottom: 16px; }
+.onenote-nb-list > button { margin: 8px 12px; }
+
+.onenote-nb-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 4px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.onenote-nb-row:hover { background: var(--background-modifier-hover); }
+.onenote-nb-row.is-active .onenote-nb-name { font-weight: 600; }
+.onenote-chevron { display: flex; color: var(--text-muted); border-radius: 3px; }
+.onenote-chevron:hover { background: var(--background-modifier-hover); }
+.onenote-chevron svg { width: 14px; height: 14px; }
+.onenote-nb-icon { display: flex; }
+.onenote-nb-icon svg { width: 18px; height: 18px; fill: currentColor; fill-opacity: 0.25; }
+.onenote-nb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.onenote-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.onenote-section-row:hover { background: var(--background-modifier-hover); }
+.onenote-section-row.is-active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  border-left-color: var(--onenote-section-color);
+  font-weight: 600;
+}
+.onenote-section-row.is-drop-target { outline: 2px solid var(--onenote-purple); outline-offset: -2px; }
+.onenote-section-swatch { flex: 0 0 auto; width: 12px; height: 14px; border-radius: 2px; }
+.onenote-section-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.onenote-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 22px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.onenote-add-row:hover { color: var(--onenote-purple); background: var(--background-modifier-hover); }
+.onenote-add-row svg { width: 13px; height: 13px; }
+
+.onenote-empty { padding: 12px; color: var(--text-muted); font-size: 13px; }
+
+/* ---------- Page list ---------- */
+
+.onenote-pages {
+  background: color-mix(in srgb, var(--onenote-section-color) 22%, var(--background-secondary));
+  border-left: 3px solid var(--onenote-section-color);
+}
+.onenote-pages-head { padding: 10px 12px 2px; }
+.onenote-pages-title {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onenote-add-page {
+  display: flex;
+  align-items: center;
+  margin: 6px 8px 6px;
+  border-radius: 3px;
+  color: var(--onenote-purple);
+  font-size: 13px;
+}
+.onenote-add-page-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.onenote-add-page-more { display: flex; padding: 5px 4px; border-radius: 3px; cursor: pointer; }
+.onenote-add-page-main:hover,
+.onenote-add-page-more:hover { background: var(--background-modifier-hover); }
+.onenote-add-page svg { width: 14px; height: 14px; }
+
+.onenote-page-list { min-height: 60%; padding-bottom: 24px; }
+.onenote-page-list.is-drop-target { box-shadow: inset 0 0 0 2px var(--onenote-purple); }
+
+.onenote-page-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.onenote-page-item[data-level="1"] { padding-left: 30px; position: relative; font-size: 12.5px; }
+.onenote-page-item[data-level="2"] { padding-left: 50px; position: relative; font-size: 12.5px; }
+/* Tree guide so subpages read clearly as children of the page above */
+.onenote-page-item[data-level="1"]::before,
+.onenote-page-item[data-level="2"]::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 50%;
+  width: 8px;
+  border-left: 1px solid var(--text-faint);
+  border-bottom: 1px solid var(--text-faint);
+  border-bottom-left-radius: 3px;
+}
+.onenote-page-item[data-level="1"]::before { left: 16px; }
+.onenote-page-item[data-level="2"]::before { left: 36px; }
+/* Docked Pages list: give it a header line so it reads as its own panel */
+.mod-left-split .onenote-pages { border-top: 1px solid var(--background-modifier-border); }
+.onenote-page-item:hover { background: color-mix(in srgb, var(--background-primary) 55%, transparent); }
+.onenote-page-item.is-active {
+  background: var(--background-primary);
+  border-color: var(--background-modifier-border);
+  font-weight: 600;
+}
+.onenote-page-item.is-dragging { opacity: 0.4; }
+.onenote-page-item.drop-before { box-shadow: inset 0 2px 0 var(--onenote-purple); }
+.onenote-page-item.drop-after { box-shadow: inset 0 -2px 0 var(--onenote-purple); }
+.onenote-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onenote-page-kind { display: flex; color: var(--text-muted); }
+.onenote-page-kind svg { width: 13px; height: 13px; }
+
+/* ---------- Page appearance: color and rule lines ---------- */
+
+body.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .view-content,
+body.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .markdown-preview-view,
+body.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .cm-scroller {
+  background-color: var(--onenote-page-color);
+}
+body.theme-dark.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .view-content,
+body.theme-dark.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .markdown-preview-view,
+body.theme-dark.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .cm-scroller {
+  background-color: color-mix(in srgb, var(--onenote-page-color) 14%, var(--background-primary));
+}
+
+body.onenote-rules-narrow { --onenote-rule: 18px; }
+body.onenote-rules-college { --onenote-rule: 22px; }
+body.onenote-rules-standard { --onenote-rule: 27px; }
+body.onenote-rules-wide { --onenote-rule: 34px; }
+body.onenote-rules-grid-small { --onenote-rule: 16px; }
+body.onenote-rules-grid-large { --onenote-rule: 32px; }
+
+body.onenote-rules .workspace-leaf-content[data-type="markdown"] .cm-scroller,
+body.onenote-rules .workspace-leaf-content[data-type="markdown"] .markdown-preview-view {
+  background-image: linear-gradient(to bottom, transparent calc(var(--onenote-rule) - 1px), var(--onenote-rule-color) calc(var(--onenote-rule) - 1px));
+  background-size: 100% var(--onenote-rule);
+  background-attachment: local;
+}
+body.onenote-rules-college .workspace-leaf-content[data-type="markdown"] .cm-scroller,
+body.onenote-rules-college .workspace-leaf-content[data-type="markdown"] .markdown-preview-view {
+  background-image:
+    linear-gradient(to right, transparent 46px, rgba(230, 90, 90, 0.55) 46px, rgba(230, 90, 90, 0.55) 47px, transparent 47px),
+    linear-gradient(to bottom, transparent calc(var(--onenote-rule) - 1px), var(--onenote-rule-color) calc(var(--onenote-rule) - 1px));
+  background-size: 100% 100%, 100% var(--onenote-rule);
+}
+body.onenote-rules-grid-small .workspace-leaf-content[data-type="markdown"] .cm-scroller,
+body.onenote-rules-grid-small .workspace-leaf-content[data-type="markdown"] .markdown-preview-view,
+body.onenote-rules-grid-large .workspace-leaf-content[data-type="markdown"] .cm-scroller,
+body.onenote-rules-grid-large .workspace-leaf-content[data-type="markdown"] .markdown-preview-view {
+  background-image:
+    linear-gradient(to right, transparent calc(var(--onenote-rule) - 1px), var(--onenote-grid-color) calc(var(--onenote-rule) - 1px)),
+    linear-gradient(to bottom, transparent calc(var(--onenote-rule) - 1px), var(--onenote-grid-color) calc(var(--onenote-rule) - 1px));
+  background-size: var(--onenote-rule) var(--onenote-rule);
+}
+
+/* ---------- Note tags (custom task statuses) ---------- */
+
+/* Tags are not "done" tasks: no strikethrough or fading */
+.markdown-source-view.mod-cm6 .HyperMD-task-line:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]),
+.markdown-rendered li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) {
+  text-decoration: none;
+  color: var(--text-normal);
+}
+
+.HyperMD-task-line:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) .task-list-item-checkbox,
+li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) > .task-list-item-checkbox,
+li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) > p > .task-list-item-checkbox {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none !important;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+.HyperMD-task-line:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) .task-list-item-checkbox::after,
+li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) > .task-list-item-checkbox::after,
+li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-task="d"], [data-task="i"]) > p > .task-list-item-checkbox::after {
+  display: none;
+}
+
+:is(.HyperMD-task-line[data-task="!"] .task-list-item-checkbox, li[data-task="!"] > .task-list-item-checkbox, li[data-task="!"] > p > .task-list-item-checkbox) {
+  background-color: #F2B200 !important;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon fill='black' points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'/></svg>");
+}
+:is(.HyperMD-task-line[data-task="?"] .task-list-item-checkbox, li[data-task="?"] > .task-list-item-checkbox, li[data-task="?"] > p > .task-list-item-checkbox) {
+  background-color: #7719AA !important;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'/><path d='M12 17h.01'/></svg>");
+}
+.theme-dark :is(.HyperMD-task-line[data-task="?"] .task-list-item-checkbox, li[data-task="?"] > .task-list-item-checkbox, li[data-task="?"] > p > .task-list-item-checkbox) { background-color: #C39BE0 !important; }
+:is(.HyperMD-task-line[data-task="*"] .task-list-item-checkbox, li[data-task="*"] > .task-list-item-checkbox, li[data-task="*"] > p > .task-list-item-checkbox) {
+  background-color: #C9A800 !important;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='m9 11-6 6v3h9l3-3'/><path d='m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'/></svg>");
+}
+:is(.HyperMD-task-line[data-task="d"] .task-list-item-checkbox, li[data-task="d"] > .task-list-item-checkbox, li[data-task="d"] > p > .task-list-item-checkbox) {
+  background-color: #2E8B3A !important;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z'/><path d='M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z'/></svg>");
+}
+:is(.HyperMD-task-line[data-task="i"] .task-list-item-checkbox, li[data-task="i"] > .task-list-item-checkbox, li[data-task="i"] > p > .task-list-item-checkbox) {
+  background-color: #E39B00 !important;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5'/><path d='M9 18h6'/><path d='M10 22h4'/></svg>");
+}
+
+/* "Remember for later" and "Definition" also highlight the text, like OneNote */
+.HyperMD-task-line[data-task="*"] span[class*="cm-list-"]:not(.cm-formatting),
+.markdown-rendered li.task-list-item[data-task="*"] > :is(p, span:not(.list-bullet)) {
+  background-color: rgba(255, 241, 0, 0.55);
+}
+.HyperMD-task-line[data-task="d"] span[class*="cm-list-"]:not(.cm-formatting),
+.markdown-rendered li.task-list-item[data-task="d"] > :is(p, span:not(.list-bullet)) {
+  background-color: rgba(120, 220, 120, 0.45);
+}
+.theme-dark .HyperMD-task-line[data-task="*"] span[class*="cm-list-"]:not(.cm-formatting) { background-color: rgba(200, 180, 0, 0.35); }
+.theme-dark .HyperMD-task-line[data-task="d"] span[class*="cm-list-"]:not(.cm-formatting) { background-color: rgba(80, 170, 80, 0.35); }
+
+/* ---------- Popovers ---------- */
+
+.onenote-popover {
+  position: fixed;
+  z-index: var(--layer-menu, 65);
+  padding: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-l);
+  font-family: var(--font-interface);
+  font-size: 12px;
+  user-select: none;
+}
+.onenote-popover-title { margin-bottom: 6px; font-weight: 600; color: var(--text-muted); }
+.onenote-popover-item { margin-top: 6px; padding: 4px 6px; border-radius: 3px; cursor: pointer; }
+.onenote-popover-item:hover { background: var(--background-modifier-hover); }
+
+.onenote-swatch-grid { display: grid; grid-template-columns: repeat(8, 20px); gap: 4px; }
+.onenote-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+.onenote-swatch:hover { outline: 2px solid var(--onenote-purple); outline-offset: 1px; }
+
+.onenote-symbol-grid { display: grid; grid-template-columns: repeat(8, 28px); gap: 2px; }
+.onenote-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  font-size: 16px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.onenote-symbol:hover { background: var(--onenote-hover); border-color: var(--onenote-purple); }
+
+.onenote-table-grid { display: grid; grid-template-columns: repeat(10, 16px); gap: 2px; }
+.onenote-table-cell {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--background-modifier-border-hover);
+  background: var(--background-primary);
+  cursor: pointer;
+}
+.onenote-table-cell.is-on { background: var(--onenote-hover); border-color: var(--onenote-purple); }
+
+/* ---------- Modals ---------- */
+
+.onenote-prompt-input { width: 100%; margin-bottom: 12px; }
+
+.onenote-tags-modal { width: min(720px, 92vw); }
+.onenote-tags-toolbar .setting-item { padding: 6px 0; border: none; }
+.onenote-tags-list { max-height: 60vh; overflow-y: auto; margin-top: 8px; }
+.onenote-tags-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+  padding-bottom: 4px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.onenote-tags-item { padding: 5px 8px 5px 26px; border-radius: 4px; cursor: pointer; }
+.onenote-tags-item:hover { background: var(--background-modifier-hover); }
+.onenote-tags-item.is-done .onenote-tags-text { text-decoration: line-through; color: var(--text-muted); }
+.onenote-tags-page { font-size: 11px; color: var(--text-muted); }

@@ -4,3 +4,8 @@ obsidian-onenote-theme/
 data.json
 .DS_Store
 Thumbs.db
+node_modules/
+.obsidian-cache/
+test/e2e/out/
+test/e2e/.vault-tmp/
+*.log

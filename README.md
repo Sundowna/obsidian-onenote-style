@@ -72,17 +72,17 @@ The ribbon is the main thing. These come with it:
 - **OneNote keyboard shortcuts** (Ctrl+1 for To Do, Ctrl+Alt+1 for Heading 1 and so on). Off by default; turn them on in the plugin's settings.
 - **Notebooks, section tabs and a page list** like OneNote. Off by default; turn them on in the plugin's settings.
 
-## Part of a second brain
+## Part of the Sundowna Second Brain Suite
 
-OneNote Style is one piece of a "second brain" built on Obsidian. The idea: your knowledge lives in plain Markdown that you own, and the tools around it feel like the ones you already use.
+This is one of three pieces of the **Sundowna Second Brain Suite (SSBS)**. Together they turn Obsidian into a second brain that feels like home: your knowledge in plain Markdown that you own, with tools that work like the ones you already use.
 
-| Piece | What it does |
-|---|---|
-| **OneNote Style** (this plugin) | The familiar ribbon and OneNote's way of working |
-| [**AI ChatBridge**](https://github.com/Sundowna/obsidian-ai-chatbridge) | Brings your chats from Claude, ChatGPT, Gemini and others into the vault. Its sync commands are in the ribbon's **AI** group |
-| [**OneNote Style theme**](https://github.com/Sundowna/obsidian-onenote-theme) | OneNote's look: white pages, Calibri, OneNote's heading styles |
+| Piece | Kind | What it does |
+|---|---|---|
+| [**AI ChatBridge**](https://github.com/Sundowna/obsidian-ai-chatbridge) | Plugin | Brings your chats from Claude, ChatGPT, Gemini and others into the vault as Markdown |
+| **OneNote Style** (you are here) | Plugin | The ribbon you already know: Office-style tabs, groups and buttons for any command, plus note tags and subpages. Its **AI** group runs AI ChatBridge's sync commands with one click |
+| [**OneNote Style theme**](https://github.com/Sundowna/obsidian-onenote-theme) | Theme | OneNote's look: white pages, Calibri, OneNote's heading styles, light and dark |
 
-Each works on its own. Together they make Obsidian feel like home.
+Each works on its own. Together they are low friction from the first minute.
 
 ## Install
 

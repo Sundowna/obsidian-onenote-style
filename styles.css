@@ -835,8 +835,11 @@ body > button.onr-btn.onr-ghost {
 .nav-file-title[data-onenote-sub] .nav-file-title-content { position: relative; }
 .nn-file[data-onenote-sub="1"] .nn-file-inner-content { margin-left: 20px; }
 .nn-file[data-onenote-sub="2"] .nn-file-inner-content { margin-left: 38px; }
-.nav-file-title[data-onenote-sub="1"] .nav-file-title-content { margin-left: 18px; }
-.nav-file-title[data-onenote-sub="2"] .nav-file-title-content { margin-left: 34px; }
+/* The explorer clips its row text, so there the L sits inside the row's own padding. */
+.nav-file-title[data-onenote-sub="1"] .nav-file-title-content { padding-left: 18px; }
+.nav-file-title[data-onenote-sub="2"] .nav-file-title-content { padding-left: 34px; }
+body .nav-file-title[data-onenote-sub="1"] .nav-file-title-content::before { left: 5px; top: 3px; }
+body .nav-file-title[data-onenote-sub="2"] .nav-file-title-content::before { left: 21px; top: 3px; }
 .nn-file[data-onenote-sub] .nn-file-inner-content::before,
 .nav-file-title[data-onenote-sub] .nav-file-title-content::before {
   content: "";

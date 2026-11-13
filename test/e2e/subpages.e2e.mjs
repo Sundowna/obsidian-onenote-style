@@ -89,6 +89,28 @@ describe('subpages', () => {
     await shot('subpages-notebook-navigator');
   });
 
+  it('subpages are indented and marked with an L in Obsidian\'s file explorer tree', async () => {
+    await withPlugin((plugin, app) => { app.commands.executeCommandById('file-explorer:open'); app.commands.executeCommandById('file-explorer:reveal-active-file'); });
+    await browser.waitUntil(async () => (await browser.execute(() => document.querySelectorAll('.nav-file-title[data-onenote-sub]').length)) >= 3, { timeout: 8000 });
+    const rows = await browser.execute(() => Array.from(document.querySelectorAll('.nav-file-title[data-path]')).map((el) => {
+      const c = el.querySelector('.nav-file-title-content');
+      const mark = getComputedStyle(c, '::before');
+      return {
+        name: el.dataset.path.split('/').pop(),
+        sub: el.getAttribute('data-onenote-sub'),
+        indent: parseFloat(getComputedStyle(c).paddingLeft),
+        mark: mark.borderLeftStyle,
+        // the L must lie inside the row's box, or the explorer clips it away
+        markInside: mark.borderLeftStyle === 'solid' ? parseFloat(mark.left) >= 0 && parseFloat(mark.left) + parseFloat(mark.width) <= parseFloat(getComputedStyle(c).paddingLeft) : null,
+      };
+    }));
+    const row = (name) => rows.find((r) => r.name === name);
+    expect(row('Sample.md')).toEqual({ name: 'Sample.md', sub: null, indent: 0, mark: 'none', markInside: null });
+    expect(row('Untitled Page.md')).toEqual({ name: 'Untitled Page.md', sub: '1', indent: 18, mark: 'solid', markInside: true });
+    expect(row('Untitled Page 2.md')).toEqual({ name: 'Untitled Page 2.md', sub: '2', indent: 34, mark: 'solid', markInside: true });
+    await shot('subpages-file-explorer');
+  });
+
   it('Promote and Make Subpage only change the property', async () => {
     const before = await snapshot();
     await withPlugin(async (plugin, app) => { await plugin.promotePage(app.vault.getAbstractFileByPath('Notebook/Section/Untitled Page 2.md')); });

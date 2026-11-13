@@ -1,8 +1,8 @@
 # OneNote Style
 
-**The ribbon you already know, in Obsidian.**
+**The ribbon you already know, in your Obsidian vault.** OneNote Style puts Office-style **tabs**, **groups** and **buttons** above your notes - **Home**, **Insert**, **View** and nine more tabs, filled and ready - so you click instead of remembering commands. Any command of Obsidian or of your other plugins can be a button, and a right-click changes anything. Note tags and subpages come along too.
 
-Tabs, groups and buttons across the top, like Word and OneNote. Click instead of remembering commands. Nothing to learn, nothing to set up: install it and start writing.
+**Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The other pieces: [AI ChatBridge](https://github.com/Sundowna/obsidian-ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://github.com/Sundowna/obsidian-onenote-theme) (the look you already know).
 
 ![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 

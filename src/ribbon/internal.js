@@ -23,6 +23,12 @@
  *       Opens Settings on a given page for the "Plugins" style buttons.
  *   menuItem.dom
  *       Only to show a colour dot next to each choice in the "Icon colour" menu. Optional.
+ *   file explorer view: getSortedFolderItems(folder), requestSort()
+ *       (Used for subpages, not for the ribbon.) Obsidian has no official way to change
+ *       the order of the rows in its file explorer. The explorer asks this method for
+ *       the sorted rows of a folder; it is wrapped so subpages follow their parent page.
+ *       Sorting plugins use the same method. If it disappears, the explorer simply
+ *       keeps its normal order.
  *   app.changeTheme(name)
  *       Light / dark buttons. Falls back to the official "theme:toggle-light-dark" command.
  */
@@ -116,6 +122,48 @@ export function tintMenuItem(menuItem, color) {
     const icon = menuItem.dom && menuItem.dom.querySelector('.menu-item-icon');
     if (icon && color && color !== 'none') icon.dataset.onrColor = color;
   } catch (e) { /* the menu simply shows no colour dot */ }
+}
+
+/**
+ * Lets `regroup(rows)` reorder the rows the file explorer shows in a folder. Each row has
+ * a `.file` (a TFile or TFolder). Returns a function that undoes the change, or null if
+ * the explorer isn't loaded yet or works differently in this Obsidian version.
+ */
+export function patchExplorerSort(app, regroup) {
+  try {
+    const leaf = app.workspace.getLeavesOfType('file-explorer').find((l) => l.view && typeof l.view.getSortedFolderItems === 'function');
+    if (!leaf) return null;
+    const proto = Object.getPrototypeOf(leaf.view);
+    if (!Object.prototype.hasOwnProperty.call(proto, 'getSortedFolderItems')) return null;
+    const original = proto.getSortedFolderItems;
+    const patched = function (folder) {
+      const rows = original.call(this, folder);
+      try {
+        const out = regroup(rows);
+        return Array.isArray(out) && out.length === rows.length ? out : rows;
+      } catch (e) {
+        return rows;
+      }
+    };
+    proto.getSortedFolderItems = patched;
+    return () => {
+      // Only put the original back if nobody wrapped the method after us.
+      if (proto.getSortedFolderItems === patched) proto.getSortedFolderItems = original;
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Asks every file explorer to sort its rows again. */
+export function resortExplorers(app) {
+  try {
+    for (const leaf of app.workspace.getLeavesOfType('file-explorer')) {
+      const v = leaf.view;
+      if (v && typeof v.requestSort === 'function') v.requestSort();
+      else if (v && typeof v.sort === 'function') v.sort();
+    }
+  } catch (e) { /* the explorer keeps its order */ }
 }
 
 /** Where the ribbon is inserted: { parent, before } or null if Obsidian's layout changed. */

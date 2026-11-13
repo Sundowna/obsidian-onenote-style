@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../../src/ribbon/model.js';
 import { defaultLayout } from '../../src/ribbon/defaults.js';
+import { groupUnderParents } from '../../src/subpages.js';
 
 const sample = () => M.normalizeLayout({
   tabs: [
@@ -166,6 +167,25 @@ test('drag and drop of tabs and groups', () => {
   assert.ok(M.moveGroupTo(L, 'g2', t3.id), 'into an empty tab');
   assert.deepEqual([groups('t1'), groups(t3.id)], [[], ['g2']]);
   assert.ok(!M.moveGroupTo(L, 'zzz', 't1') && !M.moveGroupTo(L, 'g1', 'zzz'));
+});
+
+test('subpages sit under their parent, and the chosen sort applies within each level', () => {
+  const parents = { b1: 'b', b2: 'b', b2x: 'b2', a1: 'a', lost: 'not-in-list', self: 'self' };
+  const group = (list) => groupUnderParents(list, (x) => x, (x) => parents[x] || null);
+  // A-Z
+  assert.deepEqual(group(['a', 'a1', 'b', 'b1', 'b2', 'b2x', 'c']), ['a', 'a1', 'b', 'b1', 'b2', 'b2x', 'c']);
+  // Z-A: pages Z-A, and under each page its subpages Z-A
+  assert.deepEqual(group(['c', 'b2x', 'b2', 'b1', 'b', 'a1', 'a']), ['c', 'b', 'b2', 'b2x', 'b1', 'a', 'a1']);
+  // newest first, in any mixed order
+  assert.deepEqual(group(['b1', 'c', 'a1', 'b2x', 'a', 'b2', 'b']), ['c', 'a', 'a1', 'b', 'b1', 'b2', 'b2x']);
+  // a parent that is not in the list (other folder, deleted) or is the page itself: treated as a normal page
+  assert.deepEqual(group(['lost', 'self', 'a']), ['lost', 'self', 'a']);
+  // a loop of parents loses nothing
+  const loop = { x: 'y', y: 'x' };
+  assert.deepEqual(groupUnderParents(['x', 'y', 'z'], (k) => k, (k) => loop[k] || null).sort(), ['x', 'y', 'z']);
+  // nothing to do: the very same list comes back
+  const plain = ['c', 'a'];
+  assert.equal(group(plain), plain);
 });
 
 test('columns: large buttons stand alone, small ones stack three high', () => {

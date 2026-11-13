@@ -111,6 +111,28 @@ describe('subpages', () => {
     await shot('subpages-file-explorer');
   });
 
+  it('in the file explorer subpages sit under their parent, and the sort order applies within each level', async () => {
+    // more pages, so the order is not an accident: "Alpha" with subpage "Zebra", and "Mango" under "Sample"
+    await withPlugin(async (plugin, app) => {
+      const v = app.vault;
+      await v.create('Notebook/Section/Alpha.md', 'A page.');
+      await v.create('Notebook/Section/Zebra.md', '---\nparent: "[[Alpha]]"\n---\n');
+      await v.create('Notebook/Section/Mango.md', '---\nparent: "[[Sample]]"\n---\n');
+    });
+    const rows = () => browser.execute(() => Array.from(document.querySelectorAll('.nav-file-title[data-path^="Notebook/Section/"]')).map((el) => el.dataset.path.split('/').pop().replace('.md', '')));
+    const sortBy = async (order) => {
+      await withPlugin((plugin, app, o) => { app.workspace.getLeavesOfType('file-explorer')[0].view.setSortOrder(o); }, order);
+      await pause(700);
+    };
+    await sortBy('alphabetical');
+    await browser.waitUntil(async () => (await rows()).indexOf('Zebra') === (await rows()).indexOf('Alpha') + 1, { timeout: 8000 });
+    expect(await rows()).toEqual(['Alpha', 'Zebra', 'Sample', 'Mango', 'Untitled Page', 'Untitled Page 2', 'Untitled Page 3', 'Second page']);
+    await sortBy('alphabeticalReverse');
+    expect(await rows()).toEqual(['Second page', 'Sample', 'Untitled Page', 'Untitled Page 3', 'Untitled Page 2', 'Mango', 'Alpha', 'Zebra']);
+    await shot('subpages-file-explorer-z-a');
+    await sortBy('alphabetical');
+  });
+
   it('Promote and Make Subpage only change the property', async () => {
     const before = await snapshot();
     await withPlugin(async (plugin, app) => { await plugin.promotePage(app.vault.getAbstractFileByPath('Notebook/Section/Untitled Page 2.md')); });

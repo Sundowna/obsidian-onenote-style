@@ -17,7 +17,8 @@ import {
 import { RibbonView } from './ribbon/view.js';
 import { defaultLayout } from './ribbon/defaults.js';
 import { normalizeLayout, exportLayout, importLayout, activeTab } from './ribbon/model.js';
-import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode } from './ribbon/internal.js';
+import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode, patchExplorerSort, resortExplorers } from './ribbon/internal.js';
+import { groupUnderParents } from './subpages.js';
 
 const NOTEBOOKS_VIEW = 'onenote-notebooks';
 const PAGES_VIEW = 'onenote-pages';
@@ -734,7 +735,7 @@ class OneNotePlugin extends Plugin {
         if (leaf && leaf.view instanceof MarkdownView) this.lastMarkdownView = leaf.view;
         this.decoratePageHeaders();
       }));
-      this.registerEvent(workspace.on('layout-change', () => this.decoratePageHeaders()));
+      this.registerEvent(workspace.on('layout-change', () => { this.decoratePageHeaders(); this.patchExplorer(); }));
       // Fonts or theme changed: button widths may differ, so measure again.
       this.registerEvent(workspace.on('css-change', () => this.ribbon.remeasure()));
       this.registerEvent(metadataCache.on('changed', () => { this.decoratePageHeaders(); this.requestRefresh(); }));
@@ -778,6 +779,7 @@ class OneNotePlugin extends Plugin {
     }
     document.querySelectorAll('.onenote-page-date').forEach((e) => e.remove());
     if (this.sidebarObserver) this.sidebarObserver.disconnect();
+    if (this.unpatchExplorer) { this.unpatchExplorer(); this.unpatchExplorer = null; resortExplorers(this.app); }
     document.querySelectorAll('[data-onenote-sub]').forEach((e) => e.removeAttribute('data-onenote-sub'));
   }
 
@@ -832,25 +834,7 @@ class OneNotePlugin extends Plugin {
       return a.stat.ctime - b.stat.ctime;
     });
     // Subpages follow their parent page.
-    const kids = new Map();
-    const roots = [];
-    for (const file of files) {
-      const parent = this.parentOf(file);
-      if (parent) kids.set(parent.path, (kids.get(parent.path) || []).concat(file));
-      else roots.push(file);
-    }
-    if (!kids.size) return files;
-    const out = [];
-    const done = new Set();
-    const add = (file) => {
-      if (done.has(file.path)) return;
-      done.add(file.path);
-      out.push(file);
-      for (const kid of kids.get(file.path) || []) add(kid);
-    };
-    roots.forEach(add);
-    files.forEach(add); // anything left over (a loop of parents) still shows
-    return out;
+    return this.underParents(files, (f) => f);
   }
 
   allSections() {
@@ -949,6 +933,25 @@ class OneNotePlugin extends Plugin {
       level++;
     }
     return level;
+  }
+
+  /** Regroups an already sorted list so subpages sit under their parent (see subpages.js). */
+  underParents(items, fileOf) {
+    const pathOf = (item) => { const f = fileOf(item); return f ? f.path : ''; };
+    return groupUnderParents(items, pathOf, (item) => {
+      const parent = this.parentOf(fileOf(item));
+      return parent ? parent.path : null;
+    });
+  }
+
+  /**
+   * Obsidian's file explorer: subpages sit under their parent page, and the explorer's
+   * own sort order (A-Z, Z-A, newest...) applies within each level.
+   */
+  patchExplorer() {
+    if (this.unpatchExplorer) return;
+    this.unpatchExplorer = patchExplorerSort(this.app, (rows) => this.underParents(rows, (row) => row.file));
+    if (this.unpatchExplorer) resortExplorers(this.app);
   }
 
   parentLink(parent, from) {
@@ -1457,6 +1460,8 @@ class OneNotePlugin extends Plugin {
   }
 
   refresh() {
+    this.patchExplorer();
+    resortExplorers(this.app);
     this.decorateSidebars();
     const sec = this.currentSection;
     const color = sec && sec !== this.notebookOf(sec) ? this.colorOf(sec) : '#B4B4B4';

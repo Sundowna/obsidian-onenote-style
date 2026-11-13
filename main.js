@@ -448,6 +448,40 @@ function tintMenuItem(menuItem, color) {
   } catch (e) {
   }
 }
+function patchExplorerSort(app, regroup) {
+  try {
+    const leaf = app.workspace.getLeavesOfType("file-explorer").find((l) => l.view && typeof l.view.getSortedFolderItems === "function");
+    if (!leaf) return null;
+    const proto = Object.getPrototypeOf(leaf.view);
+    if (!Object.prototype.hasOwnProperty.call(proto, "getSortedFolderItems")) return null;
+    const original = proto.getSortedFolderItems;
+    const patched = function(folder) {
+      const rows = original.call(this, folder);
+      try {
+        const out = regroup(rows);
+        return Array.isArray(out) && out.length === rows.length ? out : rows;
+      } catch (e) {
+        return rows;
+      }
+    };
+    proto.getSortedFolderItems = patched;
+    return () => {
+      if (proto.getSortedFolderItems === patched) proto.getSortedFolderItems = original;
+    };
+  } catch (e) {
+    return null;
+  }
+}
+function resortExplorers(app) {
+  try {
+    for (const leaf of app.workspace.getLeavesOfType("file-explorer")) {
+      const v = leaf.view;
+      if (v && typeof v.requestSort === "function") v.requestSort();
+      else if (v && typeof v.sort === "function") v.sort();
+    }
+  } catch (e) {
+  }
+}
 function mountPoint(doc) {
   const parent = doc.body.querySelector(".app-container");
   const before = parent && parent.querySelector(":scope > .horizontal-main-container");
@@ -1805,6 +1839,35 @@ function defaultLayout() {
   return normalizeLayout({ tabs: JSON.parse(JSON.stringify(TABS)) });
 }
 
+// src/subpages.js
+function groupUnderParents(items, keyOf, parentOf) {
+  const keys = new Set(items.map(keyOf));
+  const kids = /* @__PURE__ */ new Map();
+  const roots = [];
+  for (const item of items) {
+    const parent = parentOf(item);
+    if (parent != null && parent !== keyOf(item) && keys.has(parent)) {
+      if (!kids.has(parent)) kids.set(parent, []);
+      kids.get(parent).push(item);
+    } else {
+      roots.push(item);
+    }
+  }
+  if (!kids.size) return items;
+  const out = [];
+  const done = /* @__PURE__ */ new Set();
+  const add = (item) => {
+    const key = keyOf(item);
+    if (done.has(key)) return;
+    done.add(key);
+    out.push(item);
+    for (const kid of kids.get(key) || []) add(kid);
+  };
+  roots.forEach(add);
+  items.forEach(add);
+  return out;
+}
+
 // src/main.js
 var NOTEBOOKS_VIEW = "onenote-notebooks";
 var PAGES_VIEW = "onenote-pages";
@@ -2564,7 +2627,10 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
         if (leaf && leaf.view instanceof import_obsidian3.MarkdownView) this.lastMarkdownView = leaf.view;
         this.decoratePageHeaders();
       }));
-      this.registerEvent(workspace.on("layout-change", () => this.decoratePageHeaders()));
+      this.registerEvent(workspace.on("layout-change", () => {
+        this.decoratePageHeaders();
+        this.patchExplorer();
+      }));
       this.registerEvent(workspace.on("css-change", () => this.ribbon.remeasure()));
       this.registerEvent(metadataCache.on("changed", () => {
         this.decoratePageHeaders();
@@ -2606,6 +2672,11 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     }
     document.querySelectorAll(".onenote-page-date").forEach((e) => e.remove());
     if (this.sidebarObserver) this.sidebarObserver.disconnect();
+    if (this.unpatchExplorer) {
+      this.unpatchExplorer();
+      this.unpatchExplorer = null;
+      resortExplorers(this.app);
+    }
     document.querySelectorAll("[data-onenote-sub]").forEach((e) => e.removeAttribute("data-onenote-sub"));
   }
   async persist() {
@@ -2654,25 +2725,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       if (ia !== ib) return ia < ib ? -1 : 1;
       return a.stat.ctime - b.stat.ctime;
     });
-    const kids = /* @__PURE__ */ new Map();
-    const roots = [];
-    for (const file of files) {
-      const parent = this.parentOf(file);
-      if (parent) kids.set(parent.path, (kids.get(parent.path) || []).concat(file));
-      else roots.push(file);
-    }
-    if (!kids.size) return files;
-    const out = [];
-    const done = /* @__PURE__ */ new Set();
-    const add = (file) => {
-      if (done.has(file.path)) return;
-      done.add(file.path);
-      out.push(file);
-      for (const kid of kids.get(file.path) || []) add(kid);
-    };
-    roots.forEach(add);
-    files.forEach(add);
-    return out;
+    return this.underParents(files, (f) => f);
   }
   allSections() {
     const out = [];
@@ -2765,6 +2818,26 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       level++;
     }
     return level;
+  }
+  /** Regroups an already sorted list so subpages sit under their parent (see subpages.js). */
+  underParents(items, fileOf) {
+    const pathOf = (item) => {
+      const f = fileOf(item);
+      return f ? f.path : "";
+    };
+    return groupUnderParents(items, pathOf, (item) => {
+      const parent = this.parentOf(fileOf(item));
+      return parent ? parent.path : null;
+    });
+  }
+  /**
+   * Obsidian's file explorer: subpages sit under their parent page, and the explorer's
+   * own sort order (A-Z, Z-A, newest...) applies within each level.
+   */
+  patchExplorer() {
+    if (this.unpatchExplorer) return;
+    this.unpatchExplorer = patchExplorerSort(this.app, (rows) => this.underParents(rows, (row) => row.file));
+    if (this.unpatchExplorer) resortExplorers(this.app);
   }
   parentLink(parent, from) {
     return "[[" + this.app.metadataCache.fileToLinktext(parent, from.path, true) + "]]";
@@ -3237,6 +3310,8 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     run();
   }
   refresh() {
+    this.patchExplorer();
+    resortExplorers(this.app);
     this.decorateSidebars();
     const sec = this.currentSection;
     const color = sec && sec !== this.notebookOf(sec) ? this.colorOf(sec) : "#B4B4B4";

@@ -1,9 +1,10 @@
 // A reload of Obsidian keeps the customised layout.
 import { browser, expect } from '@wdio/globals';
-import { openSample, resetLayout, selectTab, ribbonState, withPlugin, layout, pause, rightClick, clickMenu, answerPrompt } from './helpers.mjs';
+import { setSize, openSample, resetLayout, selectTab, ribbonState, withPlugin, layout, pause, rightClick, clickMenu, answerPrompt } from './helpers.mjs';
 
 describe('reload', () => {
   it('keeps the layout, the hidden tabs and the selected tab', async () => {
+    await setSize(1920, 1040);
     await openSample();
     await resetLayout();
 
@@ -24,7 +25,7 @@ describe('reload', () => {
     // restart Obsidian on the same vault, keeping what the plugin saved
     await browser.reloadObsidian();
     await browser.$('.onenote-ribbon .onr-strip').waitForExist({ timeout: 30000 });
-    await pause(500);
+    await setSize(1920, 1040);
 
     expect(await layout()).toEqual(before);
     const s = await ribbonState();
@@ -43,7 +44,7 @@ describe('reload', () => {
     });
     await browser.reloadObsidian();
     await browser.$('.onenote-ribbon .onr-strip').waitForExist({ timeout: 30000 });
-    await pause(500);
+    await setSize(1920, 1040);
     const s = await ribbonState();
     expect(s.tabs.length).toBe(12);
     expect(s.groups.length).toBeGreaterThan(0);

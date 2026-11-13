@@ -154,7 +154,7 @@ body.onenote-has-topbar .app-container > .horizontal-main-container {
   display: flex;
   align-items: stretch;
   gap: 4px;
-  height: 34px;
+  height: 32px;
   padding: 0 8px;
   background: var(--onenote-tabrow-bg);
   color: var(--onenote-tabrow-text);
@@ -193,11 +193,11 @@ body.onenote-has-topbar .workspace-ribbon.mod-left {
    own red hover. */
 body.onenote-has-topbar.is-hidden-frameless:not(.is-fullscreen) .titlebar-button-container.mod-right {
   background-color: var(--onenote-tabrow-bg) !important;
-  height: 34px;
+  height: 32px;
 }
 body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button {
   color: var(--onenote-tabrow-text) !important;
-  height: 34px;
+  height: 32px;
 }
 body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:not(.mod-close):hover {
   background-color: color-mix(in srgb, currentColor 14%, transparent);
@@ -231,7 +231,7 @@ body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:no
   cursor: pointer;
 }
 .onenote-tab.is-overflow { display: none; }
-.onenote-tab.is-squeezed { flex: 0 1 auto; min-width: 0; display: block; line-height: 30px; overflow: hidden; text-overflow: ellipsis; }
+.onenote-tab.is-squeezed { flex: 0 1 auto; min-width: 0; display: block; line-height: 28px; overflow: hidden; text-overflow: ellipsis; }
 .onenote-tab:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
 .onenote-tab.is-active {
   background: var(--onenote-ribbon-bg);
@@ -263,7 +263,6 @@ body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:no
   display: flex;
   align-items: center;
   gap: 6px;
-  overflow: hidden;
 }
 .onenote-search {
   flex: 0 1 220px;
@@ -392,16 +391,45 @@ body.onenote-fullpage .onenote-section-tabs { display: none; }
 .onr-btn-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-color, var(--text-muted)); }
 .onr-btn:hover .onr-btn-icon:not([data-color]) { color: var(--icon-color-hover, var(--text-normal)); }
 
-/* Icon colours follow the theme's own palette */
-.onr-btn-icon[data-color="accent"], .menu-item-icon[data-onr-color="accent"] { color: var(--text-accent); }
-.onr-btn-icon[data-color="red"], .menu-item-icon[data-onr-color="red"] { color: var(--color-red); }
-.onr-btn-icon[data-color="orange"], .menu-item-icon[data-onr-color="orange"] { color: var(--color-orange); }
-.onr-btn-icon[data-color="yellow"], .menu-item-icon[data-onr-color="yellow"] { color: var(--color-yellow); }
-.onr-btn-icon[data-color="green"], .menu-item-icon[data-onr-color="green"] { color: var(--color-green); }
-.onr-btn-icon[data-color="cyan"], .menu-item-icon[data-onr-color="cyan"] { color: var(--color-cyan); }
-.onr-btn-icon[data-color="blue"], .menu-item-icon[data-onr-color="blue"] { color: var(--color-blue); }
-.onr-btn-icon[data-color="purple"], .menu-item-icon[data-onr-color="purple"] { color: var(--color-purple); }
-.onr-btn-icon[data-color="pink"], .menu-item-icon[data-onr-color="pink"] { color: var(--color-pink); }
+/* Icon colours follow the theme's own palette. --onr-ink is how much of the palette
+   colour is used; the rest is black (light mode) or white (dark mode), so the icons
+   keep enough contrast against the ribbon in both modes. */
+.onenote-topbar, .onr-popover, .onr-ghost { --onr-ink: 100%; --onr-ink-mix: white; }
+.theme-light :is(.onenote-topbar, .onr-popover, .onr-ghost), .theme-light.onr-ghost { --onr-ink: 62%; --onr-ink-mix: black; }
+.theme-dark :is(.onenote-topbar, .onr-popover, .onr-ghost), .theme-dark.onr-ghost { --onr-ink: 82%; --onr-ink-mix: white; }
+.onr-btn-icon[data-color="accent"] { color: color-mix(in srgb, var(--interactive-accent) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="red"] { color: color-mix(in srgb, var(--color-red) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="orange"] { color: color-mix(in srgb, var(--color-orange) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="yellow"] { color: color-mix(in srgb, var(--color-yellow) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="green"] { color: color-mix(in srgb, var(--color-green) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="cyan"] { color: color-mix(in srgb, var(--color-cyan) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="blue"] { color: color-mix(in srgb, var(--color-blue) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="purple"] { color: color-mix(in srgb, var(--color-purple) var(--onr-ink), var(--onr-ink-mix)); }
+.onr-btn-icon[data-color="pink"] { color: color-mix(in srgb, var(--color-pink) var(--onr-ink), var(--onr-ink-mix)); }
+.theme-light .onr-btn-icon[data-color="yellow"] { --onr-ink: 48%; }
+.theme-light .onr-btn-icon[data-color="orange"],
+.theme-light .onr-btn-icon[data-color="cyan"],
+.theme-light .onr-btn-icon[data-color="green"] { --onr-ink: 56%; }
+
+/* Product logos keep their brand's own colour (unless the user picks another one) */
+.onr-btn-icon[data-color="brand"][data-icon="onenote-ai-claude"] { color: #D97757; }
+.onr-btn-icon[data-color="brand"][data-icon="onenote-ai-lumo"] { color: #6D4AFF; }
+.onr-btn-icon[data-color="brand"][data-icon="onenote-ai-openai"],
+.onr-btn-icon[data-color="brand"][data-icon="onenote-ai-codex"] { color: var(--text-normal); }
+.theme-light .onr-btn-icon[data-color="brand"][data-icon="onenote-ai-claude"] { color: #A8482A; }
+.theme-light .onr-btn-icon[data-color="brand"][data-icon="onenote-ai-lumo"] { color: #5232D6; }
+.theme-dark .onr-btn-icon[data-color="brand"][data-icon="onenote-ai-lumo"] { color: #9B82FF; }
+
+/* Colour dots in the "Icon colour" menu */
+.menu-item-icon[data-onr-color="accent"] { color: var(--interactive-accent); }
+.menu-item-icon[data-onr-color="red"] { color: var(--color-red); }
+.menu-item-icon[data-onr-color="orange"] { color: var(--color-orange); }
+.menu-item-icon[data-onr-color="yellow"] { color: var(--color-yellow); }
+.menu-item-icon[data-onr-color="green"] { color: var(--color-green); }
+.menu-item-icon[data-onr-color="cyan"] { color: var(--color-cyan); }
+.menu-item-icon[data-onr-color="blue"] { color: var(--color-blue); }
+.menu-item-icon[data-onr-color="purple"] { color: var(--color-purple); }
+.menu-item-icon[data-onr-color="pink"] { color: var(--color-pink); }
 .menu-item-icon[data-onr-color] svg { fill: currentColor; }
 .onr-btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 

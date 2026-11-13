@@ -72,10 +72,10 @@ const TABS = [
     G('home-ai', 'AI', [
       L('ai-chatbridge:sync-all-chats', 'Sync All', 'refresh-cw'),
       L('ai-chatbridge:stop-sync', 'Stop All', 'square', 'red'),
-      S('ai-chatbridge:sync-claude-chats', 'Claude', 'onenote-ai-claude', 'orange'),
-      S('ai-chatbridge:sync-chatgpt-chats', 'ChatGPT', 'onenote-ai-openai', 'green'),
+      S('ai-chatbridge:sync-claude-chats', 'Claude', 'onenote-ai-claude'),
+      S('ai-chatbridge:sync-chatgpt-chats', 'ChatGPT', 'onenote-ai-openai'),
       S('ai-chatbridge:sync-gemini-chats', 'Gemini', 'sparkles', 'blue'),
-      S('ai-chatbridge:sync-lumo-chats', 'Lumo', 'onenote-ai-lumo', 'purple'),
+      S('ai-chatbridge:sync-lumo-chats', 'Lumo', 'onenote-ai-lumo'),
       S('ai-chatbridge:sync-desktop-app-chats', 'Desktop Apps', 'monitor'),
       S('ai-chatbridge:sync-hermes-chats', 'Hermes', 'bot'),
     ], 'first'),

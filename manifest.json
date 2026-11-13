@@ -1,9 +1,9 @@
 {
   "id": "onenote-style",
   "name": "OneNote Style",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "minAppVersion": "1.4.0",
-  "description": "Makes Obsidian look and work like OneNote: notebooks, colored section tabs, a page list with subpages, a Home/Insert/View ribbon, note tags (To Do, Important, Question...), rule lines, page colors and OneNote keyboard shortcuts.",
+  "description": "Makes Obsidian look and work like OneNote: an Office-style ribbon you can customise (tabs, groups and buttons for any command), notebooks, colored section tabs, a page list with subpages, note tags, rule lines, page colors and OneNote keyboard shortcuts.",
   "author": "Sundowna",
   "authorUrl": "https://github.com/Sundowna",
   "isDesktopOnly": true

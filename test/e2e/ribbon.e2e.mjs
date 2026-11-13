@@ -585,6 +585,62 @@ describe('ribbon', () => {
     });
   });
 
+  describe('icon colours', () => {
+    // WCAG asks for at least 3:1 between a graphic and its background.
+    const measure = () => browser.execute(() => {
+      const parse = (c) => {
+        let m = c.match(/^rgba?\(([^)]+)\)/);
+        if (m) return m[1].split(/[ ,/]+/).slice(0, 3).map((v) => Number(v) / 255);
+        m = c.match(/^color\(srgb ([^)]+)\)/);
+        return m[1].split(/[ /]+/).slice(0, 3).map(Number);
+      };
+      const lum = (c) => {
+        const [r, g, b] = parse(c).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (x, y) => { const a = lum(x); const b = lum(y); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+      const bg = getComputedStyle(document.querySelector('.onenote-ribbon')).backgroundColor;
+      const out = {};
+      for (const el of document.querySelectorAll('.onr-strip [data-item]:not(.is-disabled) .onr-btn-icon, .onr-strip [data-item="probe"] .onr-btn-icon')) {
+        const key = (el.dataset.color || 'plain') + (el.dataset.icon ? ':' + el.dataset.icon : '');
+        out[key] = Math.round(ratio(getComputedStyle(el).color, bg) * 100) / 100;
+      }
+      return out;
+    });
+
+    it('every icon colour and every brand logo keeps at least 3:1 contrast, in light and in dark mode', async () => {
+      // one probe button per colour and per brand logo, in a group of their own
+      await withPlugin((plugin) => {
+        const colors = ['accent', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink'];
+        const items = colors.map((c) => ({ id: 'probe-' + c, command: 'editor:toggle-bold', size: 'small', icon: 'star', color: c }));
+        for (const logo of ['onenote-ai-claude', 'onenote-ai-openai', 'onenote-ai-lumo', 'onenote-ai-codex']) {
+          items.push({ id: 'probe-' + logo, command: 'editor:toggle-bold', size: 'small', icon: logo });
+        }
+        items.push({ id: 'probe-plain', command: 'editor:toggle-bold', size: 'small', icon: 'star' });
+        plugin.ribbonLayout.tabs[0].groups = [{ id: 'probes', name: 'Probes', priority: 'last', items }];
+        plugin.ribbon.changed();
+      });
+      for (const dark of [false, true]) {
+        await setDark(dark);
+        const ratios = await measure();
+        expect(Object.keys(ratios).length).toBe(14);
+        for (const [key, value] of Object.entries(ratios)) {
+          expect({ dark, key, ok: value >= 3, value }).toEqual({ dark, key, ok: true, value });
+        }
+      }
+    });
+
+    it('product logos keep their brand colour until the user picks another one', async () => {
+      const claude = await item('ai-chatbridge:sync-claude-chats');
+      const icon = btn(claude.id) + ' .onr-btn-icon';
+      expect(await browser.$(icon).getAttribute('data-color')).toBe('brand');
+      await rightClick(btn(claude.id));
+      await clickMenu('Icon colour...');
+      await clickMenu('Blue');
+      expect(await browser.$(icon).getAttribute('data-color')).toBe('blue');
+    });
+  });
+
   describe('export and import', () => {
     it('exports the layout as one JSON file and imports it back', async () => {
       const cut = await item('onenote-style:cut');

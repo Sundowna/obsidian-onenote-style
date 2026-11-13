@@ -880,11 +880,20 @@ var RibbonView = class {
   drawIcon(el, item, cmd, label, large) {
     const color = iconColor(item, large);
     if (color !== "none") el.dataset.color = color;
+    let shown = "";
     for (const id of [item.icon, cmd && cmd.icon]) {
       if (id && /^[\w-]+$/.test(id) && (0, import_obsidian2.getIcon)(id)) {
         (0, import_obsidian2.setIcon)(el, id);
-        return;
+        shown = id;
+        break;
       }
+    }
+    if (shown) {
+      if (shown.startsWith("onenote-ai-") && !item.color) {
+        el.dataset.color = "brand";
+        el.dataset.icon = shown;
+      }
+      return;
     }
     el.addClass("is-glyph");
     el.setText((label.trim()[0] || "?").toUpperCase());
@@ -1468,10 +1477,10 @@ var TABS = [
     G("home-ai", "AI", [
       L("ai-chatbridge:sync-all-chats", "Sync All", "refresh-cw"),
       L("ai-chatbridge:stop-sync", "Stop All", "square", "red"),
-      S("ai-chatbridge:sync-claude-chats", "Claude", "onenote-ai-claude", "orange"),
-      S("ai-chatbridge:sync-chatgpt-chats", "ChatGPT", "onenote-ai-openai", "green"),
+      S("ai-chatbridge:sync-claude-chats", "Claude", "onenote-ai-claude"),
+      S("ai-chatbridge:sync-chatgpt-chats", "ChatGPT", "onenote-ai-openai"),
       S("ai-chatbridge:sync-gemini-chats", "Gemini", "sparkles", "blue"),
-      S("ai-chatbridge:sync-lumo-chats", "Lumo", "onenote-ai-lumo", "purple"),
+      S("ai-chatbridge:sync-lumo-chats", "Lumo", "onenote-ai-lumo"),
       S("ai-chatbridge:sync-desktop-app-chats", "Desktop Apps", "monitor"),
       S("ai-chatbridge:sync-hermes-chats", "Hermes", "bot")
     ], "first"),

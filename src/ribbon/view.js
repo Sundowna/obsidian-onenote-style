@@ -386,11 +386,21 @@ export class RibbonView {
   drawIcon(el, item, cmd, label, large) {
     const color = M.iconColor(item, large);
     if (color !== 'none') el.dataset.color = color;
+    let shown = '';
     for (const id of [item.icon, cmd && cmd.icon]) {
       if (id && /^[\w-]+$/.test(id) && getIcon(id)) {
         setIcon(el, id);
-        return;
+        shown = id;
+        break;
       }
+    }
+    if (shown) {
+      // Product logos keep their brand's colour unless the user chose a colour.
+      if (shown.startsWith('onenote-ai-') && !item.color) {
+        el.dataset.color = 'brand';
+        el.dataset.icon = shown;
+      }
+      return;
     }
     // No usable icon: show the label's first letter in a tile.
     el.addClass('is-glyph');

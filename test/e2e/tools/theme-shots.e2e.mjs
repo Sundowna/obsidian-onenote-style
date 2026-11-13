@@ -69,21 +69,21 @@ const resized = (file, width, height) => browser.execute((f, w, h) => {
 }, file, width, height);
 
 describe('theme screenshots', () => {
-  it('1-3: with the OneNote Style ribbon (light, dark, another tab) and the 512 x 288 directory screenshot', async () => {
+  it('1-3: with the OneNote Style ribbon (two dark, one light) and the 512 x 288 directory screenshot', async () => {
     await browser.reloadObsidian({ vault: buildVault(true) });
     await browser.$('.onenote-ribbon .onr-strip').waitForExist({ timeout: 30000 });
     await setSize(1840, 1035);
     await prepare();
-    await dark(false);
-    await tab('home');
-    await save('1-ribbon-light');
-    fs.writeFileSync(path.join(THEME_DIR, 'screenshot.png'), Buffer.from(await resized(shotPath('1-ribbon-light'), 512, 288), 'base64'));
     await dark(true);
-    await save('2-ribbon-dark');
-    await dark(false);
-    await tab('insert');
-    await save('3-ribbon-insert-light');
     await tab('home');
+    await save('1-ribbon-dark');
+    // the official screenshot for the community directory
+    fs.writeFileSync(path.join(THEME_DIR, 'screenshot.png'), Buffer.from(await resized(shotPath('1-ribbon-dark'), 512, 288), 'base64'));
+    await tab('insert');
+    await save('2-ribbon-insert-dark');
+    await dark(false);
+    await tab('home');
+    await save('3-ribbon-light');
   });
 
   it('4-5: the theme alone, light and dark', async () => {

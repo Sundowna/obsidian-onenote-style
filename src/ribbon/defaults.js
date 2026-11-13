@@ -13,8 +13,10 @@
 import { normalizeLayout } from './model.js';
 
 const O = 'onenote-style:';
-const L = (command, label, icon) => ({ command, label, icon, size: 'large' });
-const S = (command, label, icon) => ({ command, label, icon, size: 'small' });
+// The optional fourth value is the icon colour. Large icons use the accent colour by
+// themselves; colours are set where they help to recognise a button at a glance.
+const L = (command, label, icon, color) => ({ command, label, icon, size: 'large', color });
+const S = (command, label, icon, color) => ({ command, label, icon, size: 'small', color });
 const G = (id, name, items, priority) => ({ id, name, priority: priority || 'normal', items });
 const T = (id, name, groups) => ({ id, name, groups });
 
@@ -24,15 +26,15 @@ const TABS = [
       L(O + 'paste', 'Paste', 'clipboard-paste'),
       S(O + 'cut', 'Cut', 'scissors'),
       S(O + 'copy', 'Copy', 'copy'),
-      S('editor:clear-formatting', 'Clear', 'eraser'),
+      S('editor:clear-formatting', 'Clear', 'eraser', 'pink'),
     ], 'last'),
     G('home-text', 'Basic Text', [
       S('editor:toggle-bold', 'Bold', 'bold'),
       S('editor:toggle-italics', 'Italic', 'italic'),
       S(O + 'underline', 'Underline', 'underline'),
       S('editor:toggle-strikethrough', 'Strike', 'strikethrough'),
-      S(O + 'highlight-color', 'Highlight', 'highlighter'),
-      S(O + 'font-color', 'Font Color', 'baseline'),
+      S(O + 'highlight-color', 'Highlight', 'highlighter', 'yellow'),
+      S(O + 'font-color', 'Font Color', 'baseline', 'red'),
       S(O + 'subscript', 'Subscript', 'subscript'),
       S(O + 'superscript', 'Superscript', 'superscript'),
       S('editor:toggle-code', 'Code', 'code'),
@@ -46,19 +48,19 @@ const TABS = [
       S('editor:toggle-blockquote', 'Quote', 'quote'),
     ]),
     G('home-styles', 'Styles', [
-      S(O + 'heading-1', 'Heading 1', 'heading-1'),
-      S(O + 'heading-2', 'Heading 2', 'heading-2'),
-      S(O + 'heading-3', 'Heading 3', 'heading-3'),
-      S(O + 'heading-4', 'Heading 4', 'heading-4'),
+      S(O + 'heading-1', 'Heading 1', 'heading-1', 'blue'),
+      S(O + 'heading-2', 'Heading 2', 'heading-2', 'blue'),
+      S(O + 'heading-3', 'Heading 3', 'heading-3', 'blue'),
+      S(O + 'heading-4', 'Heading 4', 'heading-4', 'blue'),
       S(O + 'normal', 'Normal', 'pilcrow'),
     ]),
     G('home-tags', 'Tags', [
-      L(O + 'tag-todo', 'To Do', 'check-square'),
-      S(O + 'tag-important', 'Important', 'star'),
-      S(O + 'tag-question', 'Question', 'help-circle'),
-      S(O + 'tag-remember', 'Remember', 'bookmark'),
-      S(O + 'tag-definition', 'Definition', 'book-open'),
-      S(O + 'tag-idea', 'Idea', 'lightbulb'),
+      L(O + 'tag-todo', 'To Do', 'check-square', 'blue'),
+      S(O + 'tag-important', 'Important', 'star', 'yellow'),
+      S(O + 'tag-question', 'Question', 'help-circle', 'purple'),
+      S(O + 'tag-remember', 'Remember', 'bookmark', 'orange'),
+      S(O + 'tag-definition', 'Definition', 'book-open', 'green'),
+      S(O + 'tag-idea', 'Idea', 'lightbulb', 'yellow'),
       S(O + 'find-tags', 'Find Tags', 'search-check'),
     ]),
     G('home-pages', 'Pages', [
@@ -69,19 +71,19 @@ const TABS = [
     ]),
     G('home-ai', 'AI', [
       L('ai-chatbridge:sync-all-chats', 'Sync All', 'refresh-cw'),
-      L('ai-chatbridge:stop-sync', 'Stop All', 'square'),
-      S('ai-chatbridge:sync-claude-chats', 'Claude', 'onenote-ai-claude'),
-      S('ai-chatbridge:sync-chatgpt-chats', 'ChatGPT', 'onenote-ai-openai'),
-      S('ai-chatbridge:sync-gemini-chats', 'Gemini', 'sparkles'),
-      S('ai-chatbridge:sync-lumo-chats', 'Lumo', 'onenote-ai-lumo'),
+      L('ai-chatbridge:stop-sync', 'Stop All', 'square', 'red'),
+      S('ai-chatbridge:sync-claude-chats', 'Claude', 'onenote-ai-claude', 'orange'),
+      S('ai-chatbridge:sync-chatgpt-chats', 'ChatGPT', 'onenote-ai-openai', 'green'),
+      S('ai-chatbridge:sync-gemini-chats', 'Gemini', 'sparkles', 'blue'),
+      S('ai-chatbridge:sync-lumo-chats', 'Lumo', 'onenote-ai-lumo', 'purple'),
       S('ai-chatbridge:sync-desktop-app-chats', 'Desktop Apps', 'monitor'),
       S('ai-chatbridge:sync-hermes-chats', 'Hermes', 'bot'),
     ], 'first'),
     G('home-appearance', 'Appearance', [
       L('theme:toggle-light-dark', 'Light / Dark', 'sun-moon'),
-      S(O + 'use-light-mode', 'Light', 'sun'),
-      S(O + 'use-dark-mode', 'Dark', 'moon'),
-      S('theme:switch', 'Theme', 'palette'),
+      S(O + 'use-light-mode', 'Light', 'sun', 'yellow'),
+      S(O + 'use-dark-mode', 'Dark', 'moon', 'blue'),
+      S('theme:switch', 'Theme', 'palette', 'purple'),
     ], 'first'),
   ]),
 
@@ -98,20 +100,20 @@ const TABS = [
     G('insert-links', 'Links', [
       L('editor:insert-link', 'Link', 'link'),
       S('editor:insert-wikilink', 'Page Link', 'file-symlink'),
-      S('editor:insert-tag', 'Tag', 'tag'),
+      S('editor:insert-tag', 'Tag', 'tag', 'cyan'),
       S('editor:insert-footnote', 'Footnote', 'file-signature'),
     ]),
     G('insert-stamp', 'Time Stamp', [
-      S(O + 'insert-date', 'Date', 'calendar'),
-      S(O + 'insert-time', 'Time', 'clock'),
-      S(O + 'insert-datetime', 'Date & Time', 'calendar-clock'),
+      S(O + 'insert-date', 'Date', 'calendar', 'blue'),
+      S(O + 'insert-time', 'Time', 'clock', 'blue'),
+      S(O + 'insert-datetime', 'Date & Time', 'calendar-clock', 'blue'),
     ]),
     G('insert-blocks', 'Blocks', [
-      S('editor:insert-callout', 'Callout', 'message-square'),
+      S('editor:insert-callout', 'Callout', 'message-square', 'cyan'),
       S('editor:insert-codeblock', 'Code Block', 'code-2'),
       S('editor:insert-horizontal-rule', 'Divider', 'minus'),
       S('editor:toggle-blockquote', 'Quote', 'quote'),
-      S('editor:insert-mathblock', 'Equation', 'sigma'),
+      S('editor:insert-mathblock', 'Equation', 'sigma', 'purple'),
       S('editor:toggle-inline-math', 'Inline Math', 'square-function'),
     ]),
     G('insert-symbols', 'Symbols', [
@@ -138,7 +140,7 @@ const TABS = [
       L('window:reset-zoom', '100%', 'scan'),
     ], 'last'),
     G('view-page', 'Page Setup', [
-      S(O + 'page-color', 'Page Color', 'paint-bucket'),
+      S(O + 'page-color', 'Page Color', 'paint-bucket', 'orange'),
       S(O + 'rule-lines', 'Rule Lines', 'align-justify'),
       S(O + 'page-width', 'Page Width', 'move-horizontal'),
     ]),
@@ -168,20 +170,20 @@ const TABS = [
   T('table', 'Table', [
     G('table-insert', 'Table', [
       L('editor:insert-table', 'Insert Table', 'table'),
-      L(O + 'insert-table-grid', 'Table Grid', 'grid-3x3'),
+      L(O + 'insert-table-grid', 'Table Grid', 'layout-grid'),
     ]),
     G('table-rows', 'Rows', [
-      S('editor:table-row-before', 'Add Above', 'arrow-up-to-line'),
-      S('editor:table-row-after', 'Add Below', 'arrow-down-to-line'),
-      S('editor:table-row-delete', 'Delete Row', 'trash-2'),
+      S('editor:table-row-before', 'Add Above', 'arrow-up-to-line', 'green'),
+      S('editor:table-row-after', 'Add Below', 'arrow-down-to-line', 'green'),
+      S('editor:table-row-delete', 'Delete Row', 'trash-2', 'red'),
       S('editor:table-row-up', 'Move Up', 'arrow-up'),
       S('editor:table-row-down', 'Move Down', 'arrow-down'),
       S('editor:table-row-copy', 'Duplicate', 'copy'),
     ]),
     G('table-columns', 'Columns', [
-      S('editor:table-col-before', 'Add Left', 'arrow-left-to-line'),
-      S('editor:table-col-after', 'Add Right', 'arrow-right-to-line'),
-      S('editor:table-col-delete', 'Delete Column', 'trash-2'),
+      S('editor:table-col-before', 'Add Left', 'arrow-left-to-line', 'green'),
+      S('editor:table-col-after', 'Add Right', 'arrow-right-to-line', 'green'),
+      S('editor:table-col-delete', 'Delete Column', 'trash-2', 'red'),
       S('editor:table-col-left', 'Move Left', 'arrow-left'),
       S('editor:table-col-right', 'Move Right', 'arrow-right'),
       S('editor:table-col-copy', 'Duplicate', 'copy'),
@@ -219,8 +221,8 @@ const TABS = [
     G('nav-tabs', 'Tabs', [
       S('workspace:previous-tab', 'Previous Tab', 'arrow-left'),
       S('workspace:next-tab', 'Next Tab', 'arrow-right'),
-      S('workspace:new-tab', 'New Tab', 'plus'),
-      S('workspace:close', 'Close Tab', 'x'),
+      S('workspace:new-tab', 'New Tab', 'plus', 'green'),
+      S('workspace:close', 'Close Tab', 'x', 'red'),
       S('workspace:undo-close-pane', 'Reopen Tab', 'undo-2'),
       S('workspace:close-others', 'Close Others', 'copy-x'),
     ]),
@@ -232,7 +234,7 @@ const TABS = [
     G('nav-links', 'Links', [
       S('editor:follow-link', 'Follow Link', 'link'),
       S('editor:open-link-in-new-split', 'Open to the Right', 'columns-2'),
-      S('bookmarks:open', 'Bookmarks', 'bookmark'),
+      S('bookmarks:open', 'Bookmarks', 'bookmark', 'orange'),
     ], 'first'),
   ]),
 
@@ -290,13 +292,13 @@ const TABS = [
       S('graph:open-local', 'Local Graph', 'git-branch'),
     ]),
     G('ref-tags', 'Tags', [
-      S('editor:insert-tag', 'Add Tag', 'tag'),
+      S('editor:insert-tag', 'Add Tag', 'tag', 'cyan'),
       S('tag-pane:open', 'All Tags', 'tags'),
     ]),
     G('ref-bookmarks', 'Bookmarks', [
-      S('bookmarks:bookmark-current-view', 'Bookmark', 'bookmark-plus'),
+      S('bookmarks:bookmark-current-view', 'Bookmark', 'bookmark-plus', 'orange'),
       S('bookmarks:bookmark-current-heading', 'Bookmark Heading', 'heading'),
-      S('bookmarks:open', 'All Bookmarks', 'bookmark'),
+      S('bookmarks:open', 'All Bookmarks', 'bookmark', 'orange'),
     ]),
     G('ref-copy', 'Copy', [
       S('workspace:copy-path', 'Copy Path', 'copy'),
@@ -318,9 +320,9 @@ const TABS = [
     ]),
     G('review-tasks', 'Tags and Tasks', [
       L(O + 'find-tags', 'Tags Summary', 'search-check'),
-      S('obsidian-tasks-plugin:toggle-done', 'Toggle Done', 'check-circle'),
+      S('obsidian-tasks-plugin:toggle-done', 'Toggle Done', 'check-circle', 'green'),
       S('obsidian-tasks-plugin:edit-task', 'Edit Task', 'pencil'),
-      S(O + 'remove-tags', 'Remove Tags', 'eraser'),
+      S(O + 'remove-tags', 'Remove Tags', 'eraser', 'pink'),
     ]),
     G('review-cleanup', 'Clean Up', [
       S('editing-toolbar:remove-whitespace-trim', 'Trim Line Ends', 'align-left'),
@@ -329,7 +331,7 @@ const TABS = [
     ], 'first'),
     G('review-history', 'History', [
       L('file-recovery:open', 'Local History', 'history'),
-      S('workspace:show-trash', 'Deleted Files', 'trash-2'),
+      S('workspace:show-trash', 'Deleted Files', 'trash-2', 'red'),
       S('workspace:undo-close-pane', 'Reopen Tab', 'undo-2'),
     ]),
   ]),
@@ -351,7 +353,7 @@ const TABS = [
     ]),
     G('data-tasks', 'Tasks', [
       S('obsidian-tasks-plugin:edit-task', 'Create / Edit Task', 'pencil'),
-      S('obsidian-tasks-plugin:toggle-done', 'Toggle Done', 'check-circle'),
+      S('obsidian-tasks-plugin:toggle-done', 'Toggle Done', 'check-circle', 'green'),
       S(O + 'find-tags', 'Tags Summary', 'search-check'),
     ]),
     G('data-convert', 'Convert', [
@@ -401,7 +403,7 @@ const TABS = [
     G('util-ribbon', 'Ribbon', [
       S(O + 'ribbon-export', 'Export Layout', 'download'),
       S(O + 'ribbon-import', 'Import Layout', 'upload'),
-      S(O + 'ribbon-reset', 'Reset Ribbon', 'rotate-ccw'),
+      S(O + 'ribbon-reset', 'Reset Ribbon', 'rotate-ccw', 'red'),
     ], 'first'),
   ]),
 ];

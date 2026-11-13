@@ -68,6 +68,13 @@ test('buttons: add, remove, rename, icon, size', () => {
   M.renameItem(L, 'b', '');
   M.setItemIcon(L, 'b', '');
   assert.deepEqual(M.findItem(L, 'b').item, { id: 'b', command: 'x:b', size: 'large' });
+  assert.equal(M.iconColor(M.findItem(L, 'b').item, true), 'accent', 'large icons default to the accent colour');
+  assert.equal(M.iconColor(M.findItem(L, 'b').item, false), 'none');
+  assert.ok(M.setItemColor(L, 'b', 'red') && !M.setItemColor(L, 'b', 'red') && !M.setItemColor(L, 'b', 'mauve'));
+  assert.equal(M.iconColor(M.findItem(L, 'b').item, true), 'red');
+  assert.equal(M.normalizeLayout(L).tabs[0].groups[0].items[1].color, 'red', 'colour survives save and load');
+  assert.ok(M.setItemColor(L, 'b', ''));
+  assert.deepEqual(M.findItem(L, 'b').item, { id: 'b', command: 'x:b', size: 'large' });
   assert.ok(M.removeItem(L, 'b'));
   assert.ok(!M.removeItem(L, 'b'));
   assert.deepEqual(ids(L, 'g1'), ['a', 'c']);
@@ -134,6 +141,31 @@ test('tabs: add, rename, hide, reorder, delete', () => {
   assert.ok(M.removeTab(L, 't2'));
   assert.ok(M.setTabHidden(L, t.id, false));
   assert.deepEqual(M.visibleTabs(L).map((x) => x.name), ['III', 'One']);
+});
+
+test('drag and drop of tabs and groups', () => {
+  const L = sample();
+  const t3 = M.addTab(L, 'Three');
+  const order = () => L.tabs.map((t) => t.id);
+  assert.ok(M.moveTabNextTo(L, t3.id, 't1', false), 'drop before the first tab');
+  assert.deepEqual(order(), [t3.id, 't1', 't2']);
+  assert.ok(M.moveTabNextTo(L, t3.id, 't2', true), 'drop after the last tab');
+  assert.deepEqual(order(), ['t1', 't2', t3.id]);
+  assert.ok(!M.moveTabNextTo(L, t3.id, 't2', true), 'dropping on its own place changes nothing');
+  assert.ok(!M.moveTabNextTo(L, 't1', 't1', true) && !M.moveTabNextTo(L, 't1', 'zzz', true));
+
+  const groups = (tabId) => M.findTab(L, tabId).groups.map((g) => g.id);
+  assert.ok(M.moveGroupTo(L, 'g2', 't1', 0), 'to the front of its own tab');
+  assert.deepEqual(groups('t1'), ['g2', 'g1']);
+  assert.ok(!M.moveGroupTo(L, 'g2', 't1', 0) && !M.moveGroupTo(L, 'g2', 't1', 1), 'own place');
+  assert.ok(M.moveGroupTo(L, 'g2', 't1', 2), 'to the end of its own tab');
+  assert.deepEqual(groups('t1'), ['g1', 'g2']);
+  assert.ok(M.moveGroupTo(L, 'g1', 't2', 0), 'into another tab, with its buttons');
+  assert.deepEqual([groups('t1'), groups('t2')], [['g2'], ['g1', 'g3']]);
+  assert.deepEqual(ids(L, 'g1'), ['a', 'b', 'c']);
+  assert.ok(M.moveGroupTo(L, 'g2', t3.id), 'into an empty tab');
+  assert.deepEqual([groups('t1'), groups(t3.id)], [[], ['g2']]);
+  assert.ok(!M.moveGroupTo(L, 'zzz', 't1') && !M.moveGroupTo(L, 'g1', 'zzz'));
 });
 
 test('columns: large buttons stand alone, small ones stack three high', () => {

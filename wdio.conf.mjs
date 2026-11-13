@@ -8,7 +8,7 @@ const vault = prepareVault();
 export const config = {
   runner: 'local',
   framework: 'mocha',
-  specs: ['./test/e2e/**/*.e2e.mjs'],
+  specs: ['./test/e2e/*.e2e.mjs'],
   maxInstances: 1,
   capabilities: [{
     browserName: 'obsidian',

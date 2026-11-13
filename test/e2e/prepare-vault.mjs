@@ -32,6 +32,16 @@ export function prepareVault() {
       fs.cpSync(p, path.join(dst, 'plugins', id), { recursive: true });
       enabled.push(id);
     }
+    // AI ChatBridge: program files only (no settings, no accounts), installed but turned
+    // off. With its default settings it never syncs by itself, so it stays offline. The
+    // tests turn it on to check that its commands can be added to the ribbon.
+    const bridge = path.join(src, 'plugins', 'ai-chatbridge');
+    if (fs.existsSync(path.join(bridge, 'main.js'))) {
+      fs.mkdirSync(path.join(dst, 'plugins', 'ai-chatbridge'), { recursive: true });
+      for (const f of ['main.js', 'manifest.json', 'styles.css']) {
+        if (fs.existsSync(path.join(bridge, f))) fs.copyFileSync(path.join(bridge, f), path.join(dst, 'plugins', 'ai-chatbridge', f));
+      }
+    }
     // The plugin's own settings from the Test vault, so the tests start from the real setup.
     // The ribbon layout is dropped so every run starts from the default layout.
     const data = path.join(src, 'plugins', 'onenote-style', 'data.json');

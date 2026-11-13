@@ -29,7 +29,9 @@ describe('screenshots', () => {
           await selectTab(tab);
           await pause(200);
           const s = await ribbonState();
-          expect(Math.max(...s.overflow)).toBeLessThanOrEqual(0);
+          const [strip, ribbon, tabRow, bar] = s.overflow;
+          expect({ strip, ribbon, bar }).toEqual({ strip: 0, ribbon: 0, bar: 0 });
+          expect(tabRow).toBeLessThanOrEqual(1); // sub-pixel rounding of the flexible tab area
           expect(s.contentRight).toBeLessThanOrEqual(s.stripRight);
           await shot(`${dark ? 'dark' : 'light'}-${name}-${tab}`);
         }

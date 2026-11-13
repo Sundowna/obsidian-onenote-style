@@ -21,6 +21,8 @@
  *       ribbon is inserted before this element. (Obsidian's own ribbon is not touched.)
  *   app.setting.open() / openTabById(id)
  *       Opens Settings on a given page for the "Plugins" style buttons.
+ *   menuItem.dom
+ *       Only to show a colour dot next to each choice in the "Icon colour" menu. Optional.
  *   app.changeTheme(name)
  *       Light / dark buttons. Falls back to the official "theme:toggle-light-dark" command.
  */
@@ -91,7 +93,7 @@ export function missingReason(app, commandId) {
     const community = app.plugins;
     const manifest = community && community.manifests && community.manifests[prefix];
     if (manifest) {
-      const on = community.enabledPlugins && community.enabledPlugins.has(prefix);
+      const on = !!(community.plugins && community.plugins[prefix]);
       return on
         ? `The plugin "${manifest.name}" doesn't offer this command (any more).`
         : `The plugin "${manifest.name}" is turned off. Turn it on in Settings > Community plugins.`;
@@ -106,6 +108,14 @@ export function missingReason(app, commandId) {
     }
   } catch (e) { /* fall through to the general message */ }
   return `Needs the plugin "${prefix}", which is not installed or is turned off.`;
+}
+
+/** Colours the icon of a menu item (the dots in the "Icon colour" menu). Cosmetic only. */
+export function tintMenuItem(menuItem, color) {
+  try {
+    const icon = menuItem.dom && menuItem.dom.querySelector('.menu-item-icon');
+    if (icon && color && color !== 'none') icon.dataset.onrColor = color;
+  } catch (e) { /* the menu simply shows no colour dot */ }
 }
 
 /** Where the ribbon is inserted: { parent, before } or null if Obsidian's layout changed. */

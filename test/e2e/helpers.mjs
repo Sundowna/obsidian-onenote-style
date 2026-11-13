@@ -24,7 +24,7 @@ export function withPlugin(fn, ...args) {
   return browser.executeObsidian(({ app }, id, src, a) => {
     const plugin = app.plugins.plugins[id];
     // eslint-disable-next-line no-new-func
-    return new Function('plugin', 'app', 'args', `return (${src})(plugin, app, ...args);`)(plugin, app, a);
+    return new Function('plugin', 'app', 'args', 'require', `return (${src})(plugin, app, ...args);`)(plugin, app, a, require);
   }, PLUGIN, fn.toString(), args);
 }
 
@@ -48,9 +48,19 @@ export async function setDark(dark) {
   await pause(500);
 }
 
+/** Resizes the Obsidian window (content size). WebDriver can't resize an Electron window, so ask Electron. */
 export async function setSize(width, height) {
-  await browser.setWindowSize(width, height);
-  await pause(450);
+  const got = await browser.execute((w, h) => {
+    const win = window.electron.remote.getCurrentWindow();
+    if (win.isFullScreen()) win.setFullScreen(false);
+    if (win.isMaximized()) win.unmaximize();
+    win.setMinimumSize(200, 200);
+    win.setContentSize(w, h);
+    return win.getContentSize();
+  }, width, height);
+  await pause(500);
+  const inner = await browser.execute(() => window.innerWidth);
+  if (Math.abs(inner - width) > 4) throw new Error(`Window is ${inner}px wide, wanted ${width}px (Electron says ${got})`);
 }
 
 /** What the ribbon currently shows, read from the DOM. */
@@ -127,6 +137,31 @@ export async function answerPrompt(text) {
   await input.setValue(text);
   await browser.keys('Enter');
   await pause(250);
+}
+
+/** Drags from one element to another with real pointer input, in small steps like a hand would. */
+export async function drag(fromSel, toSel, toOffset) {
+  const o = toOffset || { x: 0.5, y: 0.5 };
+  const pts = await browser.execute((a, b, off) => {
+    const ra = document.querySelector(a).getBoundingClientRect();
+    const rb = document.querySelector(b).getBoundingClientRect();
+    return { a: { x: ra.left + ra.width / 2, y: ra.top + ra.height / 2 }, b: { x: rb.left + rb.width * off.x, y: rb.top + rb.height * off.y } };
+  }, fromSel, toSel, o);
+  const { a, b } = pts;
+  let act = browser.action('pointer', { parameters: { pointerType: 'mouse' } }).move({ x: Math.round(a.x), y: Math.round(a.y) }).down({ button: 0 }).pause(60);
+  for (let i = 1; i <= 8; i++) act = act.move({ x: Math.round(a.x + ((b.x - a.x) * i) / 8), y: Math.round(a.y + ((b.y - a.y) * i) / 8), duration: 40 });
+  await act.pause(120).up({ button: 0 }).perform();
+  await pause(250);
+}
+
+/** Types into the open command or icon picker and takes the first match. */
+export async function pick(text) {
+  const input = await browser.$('.prompt .prompt-input');
+  await input.waitForExist({ timeout: 5000 });
+  await input.setValue(text);
+  await pause(300);
+  await browser.keys('Enter');
+  await pause(300);
 }
 
 export function layout() {

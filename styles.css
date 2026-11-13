@@ -231,6 +231,7 @@ body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:no
   cursor: pointer;
 }
 .onenote-tab.is-overflow { display: none; }
+.onenote-tab.is-squeezed { flex: 0 1 auto; min-width: 0; display: block; line-height: 30px; overflow: hidden; text-overflow: ellipsis; }
 .onenote-tab:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
 .onenote-tab.is-active {
   background: var(--onenote-ribbon-bg);
@@ -259,7 +260,6 @@ body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:no
 
 .onenote-tabrow-end {
   flex: 0 1000 auto;
-  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -268,7 +268,7 @@ body.onenote-has-topbar .titlebar-button-container.mod-right .titlebar-button:no
 .onenote-search {
   flex: 0 1 220px;
   width: 220px;
-  min-width: 0;
+  min-width: 130px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -390,7 +390,19 @@ body.onenote-fullpage .onenote-section-tabs { display: none; }
 :is(.onenote-topbar, .onr-popover) button.onr-btn:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 
 .onr-btn-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-color, var(--text-muted)); }
-.onr-btn:hover .onr-btn-icon { color: var(--icon-color-hover, var(--text-normal)); }
+.onr-btn:hover .onr-btn-icon:not([data-color]) { color: var(--icon-color-hover, var(--text-normal)); }
+
+/* Icon colours follow the theme's own palette */
+.onr-btn-icon[data-color="accent"], .menu-item-icon[data-onr-color="accent"] { color: var(--text-accent); }
+.onr-btn-icon[data-color="red"], .menu-item-icon[data-onr-color="red"] { color: var(--color-red); }
+.onr-btn-icon[data-color="orange"], .menu-item-icon[data-onr-color="orange"] { color: var(--color-orange); }
+.onr-btn-icon[data-color="yellow"], .menu-item-icon[data-onr-color="yellow"] { color: var(--color-yellow); }
+.onr-btn-icon[data-color="green"], .menu-item-icon[data-onr-color="green"] { color: var(--color-green); }
+.onr-btn-icon[data-color="cyan"], .menu-item-icon[data-onr-color="cyan"] { color: var(--color-cyan); }
+.onr-btn-icon[data-color="blue"], .menu-item-icon[data-onr-color="blue"] { color: var(--color-blue); }
+.onr-btn-icon[data-color="purple"], .menu-item-icon[data-onr-color="purple"] { color: var(--color-purple); }
+.onr-btn-icon[data-color="pink"], .menu-item-icon[data-onr-color="pink"] { color: var(--color-pink); }
+.menu-item-icon[data-onr-color] svg { fill: currentColor; }
 .onr-btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* Small: icon + label, three rows high */
@@ -518,6 +530,49 @@ body > button.onr-btn.onr-ghost {
   background: var(--interactive-accent);
 }
 .onr-group.is-drop-target { background: var(--onenote-hover); }
+
+.onr-ghost-chip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 4px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: 12px;
+}
+
+/* ---------- Customise mode ---------- */
+
+.onenote-topbar.is-editing .onenote-ribbon { padding-right: 74px; box-shadow: inset 0 -2px 0 var(--interactive-accent); }
+.onenote-topbar.is-editing .onenote-ribbon-collapse { display: none; }
+.onenote-topbar.is-editing .onenote-tab[data-tab],
+.onenote-topbar.is-editing .onr-group-label,
+.onenote-topbar.is-editing .onr-group-button { cursor: grab; }
+.onenote-topbar.is-editing .onr-strip > .onr-group { outline: 1px dashed var(--onenote-ribbon-border); outline-offset: -3px; }
+.onenote-topbar.is-editing .onr-group-label { color: var(--text-normal); }
+.onenote-topbar button.onr-edit-done {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  padding: 5px 12px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.onenote-topbar button.onr-edit-done:hover { background: var(--interactive-accent-hover); }
+.onenote-tab.onr-tab-add { padding: 0 8px; }
+.onenote-tab.onr-tab-add svg { width: 14px; height: 14px; }
+.onenote-topbar button.onr-btn.onr-new-group {
+  flex: 0 0 auto;
+  margin: 0 6px;
+  border: 1px dashed var(--onenote-ribbon-border);
+  color: var(--text-muted);
+}
+.onenote-topbar button.onr-btn.onr-add-inline { align-self: flex-start; }
 
 /* ---------- Pickers (add command, change icon) ---------- */
 

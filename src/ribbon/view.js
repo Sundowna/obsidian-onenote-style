@@ -13,14 +13,15 @@
  *   exportRibbon(), importRibbon(), resetRibbon()
  */
 
-import { Menu, Notice, setIcon, getIcon } from 'obsidian';
+import { Menu, Notice, Scope, setIcon, getIcon } from 'obsidian';
 import * as M from './model.js';
 import { fitGroups, fitTabs, LEVEL_FULL, LEVEL_SMALL, LEVEL_ICONS, LEVEL_COLLAPSED } from './collapse.js';
-import { findCommand, hotkeyText, missingReason } from './internal.js';
+import { findCommand, hotkeyText, missingReason, tintMenuItem } from './internal.js';
 import { CommandPickerModal, IconPickerModal } from './modals.js';
 
 const DRAG_THRESHOLD = 6;
 const TAB_HOVER_MS = 450;
+const COLOR_LABEL = { accent: 'Accent', red: 'Red', orange: 'Orange', yellow: 'Yellow', green: 'Green', cyan: 'Cyan', blue: 'Blue', purple: 'Purple', pink: 'Pink', none: 'No colour' };
 const PRIORITY_LABEL = { first: 'Shrink first', normal: 'Shrink normally', last: 'Shrink last' };
 
 export class RibbonView {
@@ -35,6 +36,8 @@ export class RibbonView {
     this.drag = null;
     this.anchor = null;
     this.suppressClick = false;
+    this.editing = false;
+    this.editScope = null;
     this.onClick = this.onClick.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
@@ -56,6 +59,7 @@ export class RibbonView {
   mount(topBar, tabsEl, bodyEl) {
     this.unmount();
     this.topBar = topBar;
+    topBar.toggleClass('is-editing', this.editing);
     this.tabsEl = tabsEl;
     this.bodyEl = bodyEl;
     topBar.addEventListener('click', this.onClick);
@@ -79,6 +83,8 @@ export class RibbonView {
   unmount() {
     this.closePopover();
     this.cancelDrag();
+    this.popEditScope();
+    this.editing = false;
     if (this.observer) this.observer.disconnect();
     this.observer = null;
     if (this.topBar) {
@@ -92,6 +98,37 @@ export class RibbonView {
   render() {
     this.renderTabs();
     this.renderBody();
+  }
+
+  /**
+   * Customise mode: tabs and groups can be dragged like buttons, "+" tiles create new
+   * tabs, groups and buttons, and a click on a button opens its menu instead of running it.
+   */
+  setEditing(on) {
+    on = !!on;
+    if (this.editing === on || !this.topBar) return;
+    this.editing = on;
+    this.measured = null;
+    this.topBar.toggleClass('is-editing', on);
+    this.popEditScope();
+    if (on) {
+      // Esc ends customise mode. It goes through Obsidian's key scopes: an open menu or
+      // dialog has its own scope on top, so Esc closes that first.
+      this.editScope = new Scope(this.app.scope);
+      this.editScope.register([], 'Escape', () => {
+        if (this.drag || this.popover) return true;
+        this.setEditing(false);
+        return false;
+      });
+      this.app.keymap.pushScope(this.editScope);
+      if (this.host.state.ribbonCollapsed) this.host.state.ribbonCollapsed = false;
+    }
+    this.render();
+  }
+
+  popEditScope() {
+    if (this.editScope) this.app.keymap.popScope(this.editScope);
+    this.editScope = null;
   }
 
   /** Call after any change to the layout. */
@@ -109,7 +146,7 @@ export class RibbonView {
 
   /** Called on a timer: redraws when a plugin was turned on or off. */
   tick() {
-    if (!this.bodyEl || !this.strip || this.drag || this.popover) return;
+    if (!this.bodyEl || !this.strip || this.drag || this.popover || this.editing) return;
     const tab = this.currentTab();
     if (!tab || !this.measured) return;
     if (this.measured.key !== this.measureKey(tab)) this.renderBody();
@@ -134,6 +171,10 @@ export class RibbonView {
         attr: { 'data-tab': tab.id, role: 'tab' },
       });
     }
+    if (this.editing) {
+      const add = el.createDiv({ cls: 'onenote-tab onr-tab-add', attr: { 'aria-label': 'New tab', 'data-tooltip-position': 'bottom' } });
+      setIcon(add, 'plus');
+    }
     this.fitTabRow();
   }
 
@@ -143,14 +184,16 @@ export class RibbonView {
     if (!el || !el.isConnected) return;
     const old = el.querySelector('.onr-tab-more');
     if (old) old.remove();
-    const tabs = Array.from(el.querySelectorAll('.onenote-tab'));
-    tabs.forEach((t) => t.removeClass('is-overflow'));
+    const tabs = Array.from(el.querySelectorAll('.onenote-tab[data-tab]'));
+    tabs.forEach((t) => t.removeClass('is-overflow', 'is-squeezed'));
     if (!tabs.length || el.clientWidth <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
     const widths = tabs.map((t) => Math.ceil(t.getBoundingClientRect().width) + 2);
     const active = tabs.findIndex((t) => t.hasClass('is-active'));
-    const fit = fitTabs({ widths, available: el.clientWidth, active, moreWidth: 34 });
+    const fit = fitTabs({ widths, available: el.clientWidth, active, moreWidth: this.editing ? 68 : 34 });
     fit.overflow.forEach((i) => tabs[i].addClass('is-overflow'));
     if (!fit.overflow.length) return;
+    // Even the active tab alone is too wide: let its label shorten with "...".
+    if (fit.visible.length === 1 && widths[fit.visible[0]] + 34 > el.clientWidth) tabs[fit.visible[0]].addClass('is-squeezed');
     const more = el.createDiv({ cls: 'onenote-tab onr-tab-more', attr: { 'aria-label': 'More tabs', 'data-tooltip-position': 'bottom' } });
     setIcon(more, 'chevrons-right');
     more.onclick = (e) => {
@@ -167,6 +210,9 @@ export class RibbonView {
 
   selectTab(id) {
     const state = this.host.state;
+    const current = this.currentTab();
+    // Nothing to do. Not redrawing also keeps the tab element alive for a double-click.
+    if (current && current.id === id && state.ribbonTab === id && !state.ribbonCollapsed) return;
     state.ribbonTab = id;
     if (state.ribbonCollapsed) state.ribbonCollapsed = false;
     this.host.saveRibbon();
@@ -190,6 +236,10 @@ export class RibbonView {
     const collapse = el.createDiv({ cls: 'onenote-ribbon-collapse', attr: { 'aria-label': 'Collapse the ribbon (Ctrl+F1)', 'data-tooltip-position': 'left' } });
     setIcon(collapse, 'chevron-up');
     collapse.onclick = () => this.host.toggleRibbon();
+    if (this.editing) {
+      const done = el.createEl('button', { cls: 'onr-edit-done', text: 'Done', attr: { type: 'button', 'aria-label': 'Customise mode: drag tabs, groups and buttons to move them, use + to add. Click Done or press Esc to finish.', 'data-tooltip-position': 'left' } });
+      done.onclick = (e) => { e.stopPropagation(); this.setEditing(false); };
+    }
 
     const tab = this.currentTab();
     if (!tab) return;
@@ -208,7 +258,7 @@ export class RibbonView {
   measureKey(tab) {
     let avail = '';
     for (const g of tab.groups) for (const i of g.items) avail += findCommand(this.app, i.command) ? '1' : '0';
-    return [tab.id, this.rev, avail].join('|');
+    return [tab.id, this.rev, avail, this.editing ? 'edit' : ''].join('|');
   }
 
   /** Measures how wide every group of the tab is at each of the four size levels. */
@@ -229,8 +279,14 @@ export class RibbonView {
     const more = this.drawMore(strip, []);
     const moreWidth = Math.ceil(more.getBoundingClientRect().width);
     more.remove();
+    let newGroupWidth = 0;
+    if (this.editing) {
+      const tile = this.drawNewGroup(strip);
+      newGroupWidth = Math.ceil(tile.getBoundingClientRect().width) + 12;
+      tile.remove();
+    }
     strip.removeClass('is-measuring');
-    this.measured = { key, widths, moreWidth };
+    this.measured = { key, widths, moreWidth, newGroupWidth };
   }
 
   /** Picks a size level for every group so the tab fits the current width, then draws it. */
@@ -238,15 +294,15 @@ export class RibbonView {
     const strip = this.strip;
     const tab = this.currentTab();
     if (!strip || !strip.isConnected || !tab || !tab.groups.length || !this.measured) return;
-    const available = Math.floor(strip.clientWidth);
-    if (available <= 0) return;
+    const available = Math.floor(strip.clientWidth) - (this.editing ? this.measured.newGroupWidth : 0);
+    if (strip.clientWidth <= 0) return;
     const fit = fitGroups({
       groups: tab.groups.map((g) => ({ id: g.id, priority: g.priority, widths: this.measured.widths[g.id] })),
       available,
       gap: 0,
       moreWidth: this.measured.moreWidth,
     });
-    const key = JSON.stringify([fit.levels, fit.overflow]);
+    const key = JSON.stringify([fit.levels, fit.overflow, this.editing]);
     if (key === this.fitKey) return;
     this.fitKey = key;
     this.closePopover();
@@ -257,6 +313,7 @@ export class RibbonView {
       else this.drawGroup(strip, g, fit.levels[g.id]);
     }
     if (overflow.length) this.drawMore(strip, overflow);
+    if (this.editing) this.drawNewGroup(strip);
     strip.dataset.fit = key;
   }
 
@@ -266,7 +323,7 @@ export class RibbonView {
       el.addClass('is-collapsed');
       const b = el.createEl('button', { cls: 'onr-btn is-large onr-group-button', attr: { type: 'button', 'aria-label': group.name, 'data-tooltip-position': 'bottom', 'aria-haspopup': 'true' } });
       const first = group.items[0];
-      this.drawIcon(b.createSpan('onr-btn-icon'), first, findCommand(this.app, first.command), group.name);
+      this.drawIcon(b.createSpan('onr-btn-icon'), first, findCommand(this.app, first.command), group.name, true);
       b.createSpan({ cls: 'onr-btn-label', text: group.name });
       setIcon(b.createSpan('onr-btn-caret'), 'chevron-down');
       return el;
@@ -285,15 +342,27 @@ export class RibbonView {
         for (const item of col.items) this.drawButton(stack, item, level === LEVEL_ICONS ? 'icon' : 'small');
       }
     }
+    if (this.editing && group.items.length) {
+      const add = body.createEl('button', { cls: 'onr-btn is-icon onr-add onr-add-inline', attr: { type: 'button', 'aria-label': 'Add a command to this group', 'data-tooltip-position': 'bottom' } });
+      setIcon(add.createSpan('onr-btn-icon'), 'plus');
+    }
     el.createDiv({ cls: 'onr-group-label', text: group.name });
     return el;
+  }
+
+  /** The "New group" tile shown at the end of the ribbon in customise mode. */
+  drawNewGroup(parent) {
+    const b = parent.createEl('button', { cls: 'onr-btn is-large onr-new-group', attr: { type: 'button', 'aria-label': 'Add a new group to this tab', 'data-tooltip-position': 'bottom' } });
+    setIcon(b.createSpan('onr-btn-icon'), 'plus');
+    b.createSpan({ cls: 'onr-btn-label', text: 'New group' });
+    return b;
   }
 
   drawButton(parent, item, mode) {
     const cmd = findCommand(this.app, item.command);
     const label = this.labelOf(item, cmd);
     const b = parent.createEl('button', { cls: `onr-btn is-${mode}`, attr: { type: 'button', 'data-item': item.id, 'data-tooltip-position': 'bottom' } });
-    this.drawIcon(b.createSpan('onr-btn-icon'), item, cmd, label);
+    this.drawIcon(b.createSpan('onr-btn-icon'), item, cmd, label, mode === 'large');
     if (mode !== 'icon') b.createSpan({ cls: 'onr-btn-label', text: label });
     if (cmd) {
       const keys = hotkeyText(this.app, item.command);
@@ -314,7 +383,9 @@ export class RibbonView {
     return id.slice(id.indexOf(':') + 1).replace(/-/g, ' ');
   }
 
-  drawIcon(el, item, cmd, label) {
+  drawIcon(el, item, cmd, label, large) {
+    const color = M.iconColor(item, large);
+    if (color !== 'none') el.dataset.color = color;
     for (const id of [item.icon, cmd && cmd.icon]) {
       if (id && /^[\w-]+$/.test(id) && getIcon(id)) {
         setIcon(el, id);
@@ -352,7 +423,9 @@ export class RibbonView {
     const vw = doc.documentElement.clientWidth;
     const vh = doc.documentElement.clientHeight;
     pop.style.maxWidth = (vw - 16) + 'px';
-    const top = r.bottom + 4;
+    // Open just below the ribbon, so the drop-down doesn't cover the group labels.
+    const ribbonBottom = this.bodyEl ? this.bodyEl.getBoundingClientRect().bottom : 0;
+    const top = Math.max(r.bottom + 4, ribbonBottom - 1);
     pop.style.maxHeight = Math.max(120, vh - top - 8) + 'px';
     pop.style.top = top + 'px';
     pop.style.left = Math.max(8, Math.min(r.left, vw - pop.offsetWidth - 8)) + 'px';
@@ -412,8 +485,25 @@ export class RibbonView {
     const t = e.target;
     const tabEl = t.closest('.onenote-tab[data-tab]');
     if (tabEl) { this.selectTab(tabEl.dataset.tab); return; }
+    if (t.closest('.onr-tab-add')) { this.promptAddTab(); return; }
+    if (t.closest('.onr-new-group')) {
+      const tab = this.currentTab();
+      if (tab) this.promptAddGroup(tab.id);
+      return;
+    }
     const itemEl = t.closest('[data-item]');
+    if (itemEl && this.editing) {
+      // While customising, a click opens the button's menu instead of running it.
+      const menu = this.itemMenu(itemEl.dataset.item, e);
+      if (menu) menu.showAtMouseEvent(e);
+      return;
+    }
     if (itemEl) { this.runItem(itemEl.dataset.item, itemEl); return; }
+    if (this.editing && t.closest('.onr-group-label')) {
+      const menu = this.groupMenu(t.closest('[data-group]').dataset.group);
+      if (menu) menu.showAtMouseEvent(e);
+      return;
+    }
     if (t.closest('.onr-add')) {
       const g = t.closest('[data-group]');
       if (g) this.pickCommand(g.dataset.group);
@@ -469,6 +559,22 @@ export class RibbonView {
     }));
     menu.addItem((i) => i.setTitle('Change icon...').setIcon('image').onClick(() => {
       new IconPickerModal(this.app, (icon) => { if (M.setItemIcon(L, itemId, icon)) this.changed(); }).open();
+    }));
+    menu.addItem((i) => i.setTitle('Icon colour...').setIcon('palette').onClick(() => {
+      const pick = new Menu();
+      pick.addItem((x) => x.setTitle('Default').setChecked(!item.color).onClick(() => {
+        if (M.setItemColor(L, itemId, '')) this.changed();
+      }));
+      pick.addSeparator();
+      for (const c of M.COLORS) {
+        pick.addItem((x) => {
+          x.setTitle(COLOR_LABEL[c]).setIcon(c === 'none' ? 'circle-off' : 'circle').setChecked(item.color === c).onClick(() => {
+            if (M.setItemColor(L, itemId, c)) this.changed();
+          });
+          tintMenuItem(x, c);
+        });
+      }
+      pick.showAtPosition({ x: e.clientX, y: e.clientY });
     }));
     if (item.label || item.icon) {
       menu.addItem((i) => i.setTitle('Use the command\'s own name and icon').setIcon('rotate-ccw').onClick(() => {
@@ -539,6 +645,7 @@ export class RibbonView {
     }
     menu.addSeparator();
     menu.addItem((i) => i.setTitle('New group...').setIcon('folder-plus').onClick(() => this.promptAddGroup(tab.id, groupId)));
+    this.addEditToggle(menu);
     menu.addItem((i) => i.setTitle('Delete group').setIcon('trash-2').setWarning(true).onClick(async () => {
       if (group.items.length) {
         const ok = await this.host.confirm('Delete group', `Delete the group "${group.name}" and its ${group.items.length} button(s)?`, 'Delete');
@@ -552,17 +659,12 @@ export class RibbonView {
   tabMenu(tab, onTab) {
     const L = this.layout;
     const menu = new Menu();
+    this.addEditToggle(menu);
+    menu.addSeparator();
     if (tab) {
       menu.addItem((i) => i.setTitle('New group...').setIcon('folder-plus').onClick(() => this.promptAddGroup(tab.id)));
-      menu.addSeparator();
     }
-    menu.addItem((i) => i.setTitle('New tab...').setIcon('plus').onClick(async () => {
-      const name = await this.host.promptText('New tab', '', 'Add');
-      if (!name) return;
-      const created = M.addTab(L, name, tab ? tab.id : null);
-      this.host.state.ribbonTab = created.id;
-      this.changed();
-    }));
+    menu.addItem((i) => i.setTitle('New tab...').setIcon('plus').onClick(() => this.promptAddTab(tab ? tab.id : null)));
     if (tab) {
       const visible = M.visibleTabs(L);
       const pos = visible.indexOf(tab);
@@ -605,6 +707,20 @@ export class RibbonView {
     return menu;
   }
 
+  addEditToggle(menu) {
+    if (this.editing) menu.addItem((i) => i.setTitle('Done customising').setIcon('check').onClick(() => this.setEditing(false)));
+    else menu.addItem((i) => i.setTitle('Customise with drag and drop').setIcon('move').onClick(() => this.setEditing(true)));
+  }
+
+  async promptAddTab(afterTabId) {
+    const name = await this.host.promptText('New tab', '', 'Add');
+    if (!name) return;
+    const current = this.currentTab();
+    const created = M.addTab(this.layout, name, afterTabId || (current ? current.id : null));
+    this.host.state.ribbonTab = created.id;
+    this.changed();
+  }
+
   pickCommand(groupId) {
     new CommandPickerModal(this.app, (cmd) => {
       if (M.addItem(this.layout, groupId, cmd.id, { size: 'small' })) this.changed();
@@ -624,9 +740,25 @@ export class RibbonView {
 
   onPointerDown(e) {
     if (e.button !== 0 || !this.strip) return;
-    const el = e.target.closest('[data-item]');
-    if (!el || !this.strip.contains(el)) return;
-    this.press = { id: el.dataset.item, x: e.clientX, y: e.clientY, el };
+    const t = e.target;
+    let press = null;
+    const itemEl = t.closest('[data-item]');
+    if (itemEl && this.strip.contains(itemEl)) {
+      press = { kind: 'item', id: itemEl.dataset.item, el: itemEl };
+    } else if (this.editing) {
+      // In customise mode tabs and groups (by their label) can be dragged too.
+      const tabEl = t.closest('.onenote-tab[data-tab]');
+      const groupEl = t.closest('.onr-group[data-group]');
+      if (tabEl) press = { kind: 'tab', id: tabEl.dataset.tab, el: tabEl, label: tabEl.textContent };
+      else if (groupEl && this.strip.contains(groupEl) && t.closest('.onr-group-label, .onr-group-button')) {
+        const found = M.findGroup(this.layout, groupEl.dataset.group);
+        if (found) press = { kind: 'group', id: found.group.id, el: groupEl, label: found.group.name };
+      }
+    }
+    if (!press) return;
+    press.x = e.clientX;
+    press.y = e.clientY;
+    this.press = press;
     const doc = this.doc;
     doc.addEventListener('pointermove', this.onPointerMove, true);
     doc.addEventListener('pointerup', this.onPointerUp, true);
@@ -650,15 +782,20 @@ export class RibbonView {
   startDrag(p) {
     this.closePopover();
     const doc = this.doc;
-    const ghost = p.el.cloneNode(true);
-    ghost.removeAttribute('data-item');
-    ghost.removeAttribute('aria-label');
-    ghost.addClass('onr-ghost');
-    doc.body.appendChild(ghost);
+    let ghost;
+    if (p.kind === 'item') {
+      ghost = p.el.cloneNode(true);
+      ghost.removeAttribute('data-item');
+      ghost.removeAttribute('aria-label');
+      ghost.addClass('onr-ghost');
+      doc.body.appendChild(ghost);
+    } else {
+      ghost = doc.body.createDiv({ cls: 'onr-ghost-chip', text: p.label });
+    }
     const line = doc.body.createDiv('onr-drop-line');
     p.el.addClass('is-drag-source');
     this.topBar.addClass('is-dragging');
-    this.drag = { id: p.id, ghost, line, target: null, hoverTab: null, hoverTimer: 0 };
+    this.drag = { kind: p.kind, id: p.id, ghost, line, target: null, hoverTab: null, hoverTimer: 0 };
   }
 
   updateDropTarget(x, y) {
@@ -670,6 +807,22 @@ export class RibbonView {
     const under = doc.elementFromPoint(x, y);
     const tabEl = under && under.closest('.onenote-tab[data-tab]');
     const tabId = tabEl ? tabEl.dataset.tab : null;
+    const edge = (r, before) => {
+      const s = d.line.style;
+      s.display = 'block';
+      s.left = (before ? r.left - 1 : r.right - 1) + 'px';
+      s.top = r.top + 'px';
+      s.width = '2px';
+      s.height = r.height + 'px';
+    };
+    if (d.kind === 'tab') {
+      if (!tabEl || tabId === d.id) return;
+      const r = tabEl.getBoundingClientRect();
+      const before = x < r.left + r.width / 2;
+      d.target = { tabId, after: !before };
+      edge(r, before);
+      return;
+    }
     if (tabId !== d.hoverTab) {
       window.clearTimeout(d.hoverTimer);
       d.hoverTab = tabId;
@@ -685,6 +838,19 @@ export class RibbonView {
     }
     if (!under || !this.strip || !this.strip.contains(under)) return;
     const groupEl = under.closest('[data-group]');
+    if (d.kind === 'group') {
+      const tab = this.currentTab();
+      if (!tab) return;
+      if (!groupEl) { d.target = { tabId: tab.id }; return; } // empty space: to the end
+      if (groupEl.dataset.group === d.id) return;
+      const index = tab.groups.findIndex((g) => g.id === groupEl.dataset.group);
+      if (index < 0) return;
+      const r = groupEl.getBoundingClientRect();
+      const before = x < r.left + r.width / 2;
+      d.target = { tabId: tab.id, index: index + (before ? 0 : 1) };
+      edge(r, before);
+      return;
+    }
     if (!groupEl) return;
     const found = M.findGroup(this.layout, groupEl.dataset.group);
     if (!found) return;
@@ -723,7 +889,11 @@ export class RibbonView {
     // The click that follows a drag must not run the button.
     this.suppressClick = true;
     window.setTimeout(() => { this.suppressClick = false; }, 0);
-    if (target && M.moveItem(this.layout, d.id, target.groupId, target.index)) this.changed();
+    let moved = false;
+    if (target && d.kind === 'item') moved = M.moveItem(this.layout, d.id, target.groupId, target.index);
+    else if (target && d.kind === 'group') moved = M.moveGroupTo(this.layout, d.id, target.tabId, target.index);
+    else if (target && d.kind === 'tab') moved = M.moveTabNextTo(this.layout, d.id, target.tabId, target.after);
+    if (moved) this.changed();
     else this.render();
   }
 

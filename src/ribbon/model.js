@@ -8,16 +8,20 @@
  *   layout = { version, tabs: [tab] }
  *   tab    = { id, name, hidden, groups: [group] }
  *   group  = { id, name, priority: 'first' | 'normal' | 'last', items: [item] }
- *   item   = { id, command, size: 'large' | 'small', label?, icon? }
+ *   item   = { id, command, size: 'large' | 'small', label?, icon?, color? }
  *
  * `command` is an Obsidian command id such as "editor:toggle-bold". `label` and `icon`
  * are optional overrides; without them the command's own name and icon are used.
+ * `color` is the icon's colour: one of COLORS, which map to the theme's own colours.
+ * Without it a large icon uses the accent colour and a small icon the normal icon colour.
  */
 
 export const LAYOUT_VERSION = 1;
 export const EXPORT_FORMAT = 'onenote-style-ribbon-layout';
 export const PRIORITIES = ['first', 'normal', 'last'];
 export const SIZES = ['large', 'small'];
+/** Icon colours. 'accent' and the names follow the theme; 'none' is the plain icon colour. */
+export const COLORS = ['accent', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'none'];
 /** Small buttons are stacked this many high, like in Office. */
 export const STACK = 3;
 
@@ -61,6 +65,7 @@ export function normalizeLayout(raw) {
         const item = { id: id(i.id, 'btn'), command: i.command.trim(), size: SIZES.includes(i.size) ? i.size : 'small' };
         if (str(i.label, '')) item.label = i.label.trim();
         if (str(i.icon, '')) item.icon = i.icon.trim();
+        if (COLORS.includes(i.color)) item.color = i.color;
         group.items.push(item);
       }
       tab.groups.push(group);
@@ -163,6 +168,16 @@ export function moveTab(layout, tabId, dir) {
   return true;
 }
 
+/** Drops a tab right before (or after) another tab. Used by drag and drop. */
+export function moveTabNextTo(layout, tabId, targetId, after) {
+  const from = layout.tabs.findIndex((t) => t.id === tabId);
+  if (from < 0 || tabId === targetId || !findTab(layout, targetId)) return false;
+  const [tab] = layout.tabs.splice(from, 1);
+  const to = layout.tabs.findIndex((t) => t.id === targetId) + (after ? 1 : 0);
+  layout.tabs.splice(to, 0, tab);
+  return to !== from;
+}
+
 export function removeTab(layout, tabId) {
   const index = layout.tabs.findIndex((t) => t.id === tabId);
   if (index < 0) return false;
@@ -195,6 +210,24 @@ export function moveGroup(layout, groupId, dir) {
   return !!found && shift(found.tab.groups, found.index, dir);
 }
 
+/**
+ * Moves a group to `index` of tab `toTabId` (any tab). `index` counts positions in the
+ * target tab as it is before the move; leave it out to append. Used by drag and drop.
+ */
+export function moveGroupTo(layout, groupId, toTabId, index) {
+  const from = findGroup(layout, groupId);
+  const to = findTab(layout, toTabId);
+  if (!from || !to) return false;
+  let at = typeof index === 'number' ? Math.max(0, Math.min(index, to.groups.length)) : to.groups.length;
+  if (from.tab === to) {
+    if (at === from.index || at === from.index + 1) return false;
+    if (at > from.index) at -= 1;
+  }
+  from.tab.groups.splice(from.index, 1);
+  to.groups.splice(at, 0, from.group);
+  return true;
+}
+
 export function removeGroup(layout, groupId) {
   const found = findGroup(layout, groupId);
   if (!found) return false;
@@ -218,6 +251,7 @@ export function addItem(layout, groupId, command, opts) {
   const item = { id: uid('btn'), command: command.trim(), size: SIZES.includes(o.size) ? o.size : 'small' };
   if (str(o.label, '')) item.label = o.label.trim();
   if (str(o.icon, '')) item.icon = o.icon.trim();
+  if (COLORS.includes(o.color)) item.color = o.color;
   const at = typeof o.index === 'number' ? Math.max(0, Math.min(o.index, found.group.items.length)) : found.group.items.length;
   found.group.items.splice(at, 0, item);
   return item;
@@ -277,6 +311,20 @@ export function setItemIcon(layout, itemId, icon) {
   if (str(icon, '')) found.item.icon = icon.trim();
   else delete found.item.icon;
   return true;
+}
+
+/** Sets the icon's colour (one of COLORS). An empty colour goes back to the default. */
+export function setItemColor(layout, itemId, color) {
+  const found = findItem(layout, itemId);
+  if (!found || (color && !COLORS.includes(color)) || (found.item.color || '') === (color || '')) return false;
+  if (color) found.item.color = color;
+  else delete found.item.color;
+  return true;
+}
+
+/** The colour an icon is drawn in: its own, else accent for large and none for small. */
+export function iconColor(item, large) {
+  return item.color || (large ? 'accent' : 'none');
 }
 
 /* ---------- columns ---------- */

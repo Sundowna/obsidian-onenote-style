@@ -27,6 +27,8 @@ body {
   --onenote-ribbon-bg: color-mix(in srgb, var(--background-secondary) 90%, white);
   --onenote-rule-color: #33475C;
   --onenote-grid-color: #2C3A48;
+  /* The theme's border colour is too faint between ribbon groups on a dark ribbon */
+  --onenote-divider: color-mix(in srgb, var(--text-muted) 42%, transparent);
 }
 
 /* ---------- Theme (accent, fonts) ---------- */
@@ -349,7 +351,7 @@ body.onenote-fullpage .onenote-section-tabs { display: none; }
   top: 6px;
   bottom: 8px;
   width: 1px;
-  background: var(--onenote-ribbon-border);
+  background: var(--onenote-divider, var(--onenote-ribbon-border));
 }
 .onr-group-body {
   flex: 1 1 auto;
@@ -825,6 +827,30 @@ body > button.onr-btn.onr-ghost {
 .onenote-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .onenote-page-kind { display: flex; color: var(--text-muted); }
 .onenote-page-kind svg { width: 13px; height: 13px; }
+
+/* ---------- Subpages in the sidebar file lists ----------
+   A subpage is a plain note with a "parent" property. In Notebook Navigator and in
+   Obsidian's file explorer it is indented and gets a small "L". */
+.nn-file[data-onenote-sub] .nn-file-inner-content,
+.nav-file-title[data-onenote-sub] .nav-file-title-content { position: relative; }
+.nn-file[data-onenote-sub="1"] .nn-file-inner-content { margin-left: 20px; }
+.nn-file[data-onenote-sub="2"] .nn-file-inner-content { margin-left: 38px; }
+.nav-file-title[data-onenote-sub="1"] .nav-file-title-content { margin-left: 18px; }
+.nav-file-title[data-onenote-sub="2"] .nav-file-title-content { margin-left: 34px; }
+.nn-file[data-onenote-sub] .nn-file-inner-content::before,
+.nav-file-title[data-onenote-sub] .nav-file-title-content::before {
+  content: "";
+  position: absolute;
+  left: -13px;
+  top: 1px;
+  width: 8px;
+  height: 9px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  border-bottom-left-radius: 3px;
+  opacity: 0.55;
+  pointer-events: none;
+}
 
 /* ---------- Page appearance: color and rule lines ---------- */
 

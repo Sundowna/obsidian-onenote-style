@@ -14,6 +14,14 @@ An Obsidian plugin that makes Obsidian look and work like Microsoft OneNote.
 
 Your notes stay plain Markdown. Tags are stored as task statuses (`- [!] Call the bank`, `- [?] Who owns this?`), which other Obsidian tools can read too. Page order, subpage levels and section colors are kept in the plugin's own `data.json`.
 
+## Subpages
+
+A subpage is a plain note in the same folder as its parent page. No folder is created. The subpage names its parent in its own properties (`parent: "[[Parent page]]"`), so the notes stay pure Markdown and renaming the parent keeps them attached. There are two levels, like in OneNote.
+
+**New Subpage**, **Make Subpage** and **Promote** (Home → Pages) only set or remove that property. In the plugin's Pages list subpages sit under their parent. In Notebook Navigator and Obsidian's file explorer they are indented and marked with a small "L"; the order of the rows there is the list's own sort order.
+
+Pages made with an older version, where a parent page was a folder holding a note of the same name, can be turned back with the command **OneNote Style: Turn page folder into plain subpages**. It moves the notes up one level and leaves the emptied folder for you to delete.
+
 ## The ribbon
 
 An Office-style ribbon sits above the workspace: **tabs → groups → buttons**, with Undo/Redo and a search box in the tab row. It is a framework, not a fixed toolbar: every button runs an Obsidian command, so any command of Obsidian or of any installed plugin can be a button.

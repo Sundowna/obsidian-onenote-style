@@ -2566,7 +2566,11 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       }));
       this.registerEvent(workspace.on("layout-change", () => this.decoratePageHeaders()));
       this.registerEvent(workspace.on("css-change", () => this.ribbon.remeasure()));
-      this.registerEvent(metadataCache.on("changed", () => this.decoratePageHeaders()));
+      this.registerEvent(metadataCache.on("changed", () => {
+        this.decoratePageHeaders();
+        this.requestRefresh();
+      }));
+      this.watchSidebars();
       const mv = workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
       if (mv) this.lastMarkdownView = mv;
       if (!this.state.navHandedOff) {
@@ -2601,6 +2605,8 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       b.style.removeProperty(v);
     }
     document.querySelectorAll(".onenote-page-date").forEach((e) => e.remove());
+    if (this.sidebarObserver) this.sidebarObserver.disconnect();
+    document.querySelectorAll("[data-onenote-sub]").forEach((e) => e.removeAttribute("data-onenote-sub"));
   }
   async persist() {
     const data = { settings: this.settings, state: this.state, ribbon: this.ribbonLayout };
@@ -2642,12 +2648,31 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     const files = folder.children.filter(isPageFile);
     const order = this.state.order[folder.path] || [];
     const idx = new Map(order.map((path, i) => [path, i]));
-    return files.sort((a, b) => {
+    files.sort((a, b) => {
       const ia = idx.has(a.path) ? idx.get(a.path) : Infinity;
       const ib = idx.has(b.path) ? idx.get(b.path) : Infinity;
       if (ia !== ib) return ia < ib ? -1 : 1;
       return a.stat.ctime - b.stat.ctime;
     });
+    const kids = /* @__PURE__ */ new Map();
+    const roots = [];
+    for (const file of files) {
+      const parent = this.parentOf(file);
+      if (parent) kids.set(parent.path, (kids.get(parent.path) || []).concat(file));
+      else roots.push(file);
+    }
+    if (!kids.size) return files;
+    const out = [];
+    const done = /* @__PURE__ */ new Set();
+    const add = (file) => {
+      if (done.has(file.path)) return;
+      done.add(file.path);
+      out.push(file);
+      for (const kid of kids.get(file.path) || []) add(kid);
+    };
+    roots.forEach(add);
+    files.forEach(add);
+    return out;
   }
   allSections() {
     const out = [];
@@ -2709,8 +2734,46 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     if (s && isInside(nb, s) && (s === nb || this.isFolder(s))) return s;
     return this.getSections(nb)[0] || (this.getPages(nb).length ? nb : null);
   }
+  /**
+   * Subpages are plain notes in the same folder as their parent page. A subpage names
+   * its parent in its own front matter:  parent: "[[Parent page]]"
+   * Nothing else marks it, so the notes stay pure Markdown and no folder is created.
+   */
+  parentOf(file) {
+    if (typeof file === "string") file = this.app.vault.getAbstractFileByPath(file);
+    if (!(file instanceof import_obsidian3.TFile) || file.extension !== "md") return null;
+    const fm = (this.app.metadataCache.getFileCache(file) || {}).frontmatter;
+    let raw = fm && fm.parent;
+    if (Array.isArray(raw)) raw = raw[0];
+    if (typeof raw !== "string") return null;
+    const m = raw.match(/\[\[([^\]|#]+)/);
+    const link = (m ? m[1] : raw).trim();
+    if (!link) return null;
+    const dest = this.app.metadataCache.getFirstLinkpathDest(link, file.path);
+    return dest instanceof import_obsidian3.TFile && dest !== file && dest.parent === file.parent ? dest : null;
+  }
+  /** 0 = page, 1 = subpage, 2 = subpage of a subpage (deeper chains show as 2). */
   levelOf(file) {
-    return this.state.levels[file.path || file] || 0;
+    let level = 0;
+    const seen = /* @__PURE__ */ new Set();
+    let cur = file;
+    while (level < 2) {
+      const parent = this.parentOf(cur);
+      if (!parent || seen.has(parent.path)) break;
+      seen.add(parent.path);
+      cur = parent;
+      level++;
+    }
+    return level;
+  }
+  parentLink(parent, from) {
+    return "[[" + this.app.metadataCache.fileToLinktext(parent, from.path, true) + "]]";
+  }
+  async setParent(file, parent) {
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      if (parent) fm.parent = this.parentLink(parent, file);
+      else delete fm.parent;
+    });
   }
   colorOf(folder) {
     const c = this.state.colors[folder.path];
@@ -2788,10 +2851,10 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     opts = opts || {};
     const section = opts.section || await this.ensureSection();
     const ext = opts.canvas ? "canvas" : "md";
-    const file = await this.app.vault.create(
-      this.uniquePath(section, this.settings.newPageName, ext),
-      opts.canvas ? '{"nodes":[],"edges":[]}' : ""
-    );
+    const path = this.uniquePath(section, this.settings.newPageName, ext);
+    const parent = !opts.canvas && opts.parent instanceof import_obsidian3.TFile && opts.parent.parent === section ? opts.parent : null;
+    const body = parent ? '---\nparent: "[[' + this.app.metadataCache.fileToLinktext(parent, path, true) + ']]"\n---\n' : "";
+    const file = await this.app.vault.create(path, opts.canvas ? '{"nodes":[],"edges":[]}' : body);
     const list = this.getPages(section).filter((f) => f !== file).map((f) => f.path);
     const after = opts.after;
     let i = after ? list.indexOf(after.path) : -1;
@@ -2804,63 +2867,15 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       list.push(file.path);
     }
     this.state.order[section.path] = list;
-    if (opts.level) this.state.levels[file.path] = opts.level;
     this.save();
     const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file, { state: { mode: "source" } });
     if (!opts.canvas) this.focusTitle(leaf, file);
     return file;
   }
-  /* ---------- subpages as real folders (Fluent OneNote format) ----------
-   * Notebook = top folder, Section = folder inside it, Page = note.
-   * A page with subpages is a folder holding a note of the same name
-   * ("folder note") plus its subpage notes:  Notebook/Section/Parent/Parent.md
-   */
-  fluentRoot() {
-    const fp = this.app.plugins && this.app.plugins.plugins && this.app.plugins.plugins["fluent-onenote"];
-    const r = fp && fp.settings ? fp.settings.rootFolder : "";
-    return (r || "").trim().replace(/^\/+|\/+$/g, "");
-  }
-  depthOf(folder) {
-    if (!folder || folder.isRoot()) return 0;
-    const root = this.fluentRoot();
-    let rel = folder.path;
-    if (root) {
-      if (rel !== root && !rel.startsWith(root + "/")) return -1;
-      rel = rel === root ? "" : rel.slice(root.length + 1);
-    }
-    return rel ? rel.split("/").length : 0;
-  }
+  /* ---------- subpages ---------- */
   isFolderNote(f) {
     return f instanceof import_obsidian3.TFile && f.parent && !f.parent.isRoot() && f.basename === f.parent.name;
-  }
-  /** The thing that moves when a page moves: the page folder for a parent page, else the note. */
-  pageUnit(f) {
-    return this.isFolderNote(f) && this.depthOf(f.parent) >= 3 ? f.parent : f;
-  }
-  needsSection(container) {
-    if (this.depthOf(container) >= 2) return false;
-    new import_obsidian3.Notice("Subpages live inside a section. Create a section in this notebook (a folder inside it) and move the page there first.", 8e3);
-    return true;
-  }
-  /** Turn a plain page into a parent page: Section/P.md -> Section/P/P.md */
-  async ensurePageFolder(page) {
-    if (this.isFolderNote(page) && this.depthOf(page.parent) >= 3) return page.parent;
-    const folderPath = (0, import_obsidian3.normalizePath)(page.parent.path + "/" + page.basename);
-    let folder = this.app.vault.getAbstractFileByPath(folderPath);
-    if (!folder) folder = await this.app.vault.createFolder(folderPath);
-    if (!(folder instanceof import_obsidian3.TFolder)) throw new Error("A file named " + folderPath + " is in the way.");
-    await this.app.fileManager.renameFile(page, (0, import_obsidian3.normalizePath)(folderPath + "/" + page.name));
-    return folder;
-  }
-  async moveInto(unit, folder) {
-    const dest = (0, import_obsidian3.normalizePath)(folder.path + "/" + unit.name);
-    if (this.app.vault.getAbstractFileByPath(dest)) {
-      new import_obsidian3.Notice(`There is already a page called "${unit.name}" there.`);
-      return false;
-    }
-    await this.app.fileManager.renameFile(unit, dest);
-    return true;
   }
   async createSubpage() {
     const cur = this.app.workspace.getActiveFile();
@@ -2868,41 +2883,79 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       new import_obsidian3.Notice("Open a page first. The subpage is created under the page you are on.");
       return;
     }
-    const container = this.pageUnit(cur).parent;
-    if (this.needsSection(container)) return;
-    const folder = await this.ensurePageFolder(cur);
-    const file = await this.app.vault.create(this.uniquePath(folder, this.settings.newPageName, "md"), "");
-    const leaf = this.app.workspace.getLeaf(false);
-    await leaf.openFile(file, { state: { mode: "source" } });
-    this.focusTitle(leaf, file);
-    return file;
+    const parent = this.levelOf(cur) < 2 ? cur : this.parentOf(cur);
+    return this.createPage({ section: cur.parent, after: cur, parent });
+  }
+  /** The page and everything below it. */
+  familyOf(file) {
+    const out = /* @__PURE__ */ new Set([file.path]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const f of file.parent.children) {
+        if (!(f instanceof import_obsidian3.TFile) || out.has(f.path)) continue;
+        const p = this.parentOf(f);
+        if (p && out.has(p.path)) {
+          out.add(f.path);
+          grew = true;
+        }
+      }
+    }
+    return out;
   }
   async makeSubpage(file) {
-    const unit = this.pageUnit(file);
-    const container = unit.parent;
-    if (this.needsSection(container)) return;
-    const candidates = container.children.filter((c) => c !== unit && (c instanceof import_obsidian3.TFolder || c instanceof import_obsidian3.TFile && c.extension === "md" && c.basename !== container.name));
+    const family = this.familyOf(file);
+    const candidates = file.parent.children.filter((c) => c instanceof import_obsidian3.TFile && c.extension === "md" && !family.has(c.path) && this.levelOf(c) < 2);
     if (!candidates.length) {
-      new import_obsidian3.Notice("There is no other page here to put it under.");
+      new import_obsidian3.Notice("There is no other page in this folder to put it under.");
       return;
     }
     new PageSuggestModal(this.app, candidates, `Make "${file.basename}" a subpage of...`, async (parent) => {
       try {
-        const folder = parent instanceof import_obsidian3.TFolder ? parent : await this.ensurePageFolder(parent);
-        if (await this.moveInto(unit, folder)) new import_obsidian3.Notice(`"${file.basename}" is now a subpage of "${folder.name}".`);
+        await this.setParent(file, parent);
+        new import_obsidian3.Notice(`"${file.basename}" is now a subpage of "${parent.basename}".`);
       } catch (e) {
         new import_obsidian3.Notice(String(e.message || e));
       }
     }).open();
   }
   async promotePage(file) {
-    const unit = this.pageUnit(file);
-    const parentFolder = unit.parent;
-    if (this.depthOf(parentFolder) < 3) {
-      new import_obsidian3.Notice(`"${file.basename}" is already a top-level page in its section.`);
+    const parent = this.parentOf(file);
+    if (!parent) {
+      new import_obsidian3.Notice(`"${file.basename}" is already a top-level page.`);
       return;
     }
-    if (await this.moveInto(unit, parentFolder.parent)) new import_obsidian3.Notice(`"${file.basename}" moved up one level.`);
+    await this.setParent(file, this.parentOf(parent));
+    new import_obsidian3.Notice(`"${file.basename}" moved up one level.`);
+  }
+  /**
+   * Undoes the older "page folder" format (Section/Page/Page.md with the subpages beside
+   * it): the notes move up into the section and the subpages get a parent property.
+   * The emptied folder is left in place; nothing is deleted.
+   */
+  async flattenPageFolder() {
+    const cur = this.app.workspace.getActiveFile();
+    const folder = cur && cur.parent;
+    const main = folder && !folder.isRoot() ? folder.children.find((c) => this.isFolderNote(c) && c.extension === "md") : null;
+    if (!main || !folder.parent) {
+      new import_obsidian3.Notice("Open a page that sits in a page folder (a folder with a note of the same name).");
+      return;
+    }
+    const target = folder.parent;
+    const notes = folder.children.filter((c) => c instanceof import_obsidian3.TFile && c.extension === "md");
+    const subfolders = folder.children.some((c) => c instanceof import_obsidian3.TFolder);
+    const ok = await confirmAction(
+      this.app,
+      "Turn page folder into plain subpages",
+      `Move "${main.basename}" and its ${notes.length - 1} subpage(s) out of the folder "${folder.name}" into "${target.isRoot() ? "the vault" : target.name}"? The subpages keep their place under "${main.basename}" through a "parent" property. The folder itself is not deleted.`,
+      "Move"
+    );
+    if (!ok) return;
+    for (const note of notes) {
+      await this.app.fileManager.renameFile(note, this.uniquePath(target, note.basename, note.extension));
+    }
+    for (const note of notes) if (note !== main) await this.setParent(note, main);
+    new import_obsidian3.Notice(subfolders ? `Done. The folder "${folder.name}" still holds other folders, so it stays.` : `Done. The folder "${folder.name}" is now empty (apart from attachments); you can delete it.`, 8e3);
   }
   focusTitle(leaf, file) {
     setTimeout(async () => {
@@ -2978,7 +3031,6 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
   async movePage(file, section) {
     if (file.parent === section) return;
     await this.app.fileManager.renameFile(file, this.uniquePath(section, file.basename, file.extension));
-    delete this.state.levels[file.path];
     this.save();
   }
   async dropPage(path, target, after) {
@@ -3043,8 +3095,8 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       if (name && name !== file.basename) await this.renameFile(file, name);
     }));
     m.addSeparator();
-    m.addItem((i) => i.setTitle("New page below").setIcon("file-plus-2").onClick(() => this.createPage({ section: file.parent, after: file, level: this.levelOf(file) })));
-    m.addItem((i) => i.setTitle("New subpage").setIcon("corner-down-right").onClick(() => this.createPage({ section: file.parent, after: file, level: Math.min(2, this.levelOf(file) + 1) })));
+    m.addItem((i) => i.setTitle("New page below").setIcon("file-plus-2").onClick(() => this.createPage({ section: file.parent, after: file, parent: this.parentOf(file) })));
+    m.addItem((i) => i.setTitle("New subpage").setIcon("corner-down-right").onClick(() => this.createPage({ section: file.parent, after: file, parent: this.levelOf(file) < 2 ? file : this.parentOf(file) })));
     if (this.levelOf(file) < 2) m.addItem((i) => i.setTitle("Make subpage").setIcon("indent").onClick(() => this.setLevel(file, 1)));
     if (this.levelOf(file) > 0) m.addItem((i) => i.setTitle("Promote subpage").setIcon("outdent").onClick(() => this.setLevel(file, -1)));
     m.addSeparator();
@@ -3162,7 +3214,30 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
       });
     }
   }
+  /**
+   * Marks subpages in the file lists of the sidebars (Notebook Navigator and Obsidian's
+   * file explorer) so the stylesheet can indent them and draw the little "L". Only an
+   * attribute is set on rows those lists already show; their order is theirs.
+   */
+  decorateSidebars() {
+    for (const el of document.querySelectorAll(".nn-file[data-path], .nav-file-title[data-path]")) {
+      const path = el.getAttribute("data-path");
+      const level = path && path.endsWith(".md") ? this.levelOf(path) : 0;
+      if (level) el.setAttribute("data-onenote-sub", String(level));
+      else if (el.hasAttribute("data-onenote-sub")) el.removeAttribute("data-onenote-sub");
+    }
+  }
+  watchSidebars() {
+    const run = (0, import_obsidian3.debounce)(() => this.decorateSidebars(), 80, true);
+    this.sidebarObserver = new MutationObserver((records) => {
+      if (records.some((r) => r.addedNodes.length)) run();
+    });
+    const ws = document.body.querySelector(".workspace");
+    if (ws) this.sidebarObserver.observe(ws, { childList: true, subtree: true });
+    run();
+  }
   refresh() {
+    this.decorateSidebars();
     const sec = this.currentSection;
     const color = sec && sec !== this.notebookOf(sec) ? this.colorOf(sec) : "#B4B4B4";
     document.body.style.setProperty("--onenote-section-color", color);
@@ -3345,6 +3420,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     this.addCommand({ id: "prev-section", name: "Go to previous section", callback: () => this.stepSection(-1) });
     this.addCommand({ id: "make-subpage", name: "Make current page a subpage", callback: () => this.withActivePage((f) => this.setLevel(f, 1)), hotkeys: key(["Mod", "Alt"], "]") });
     this.addCommand({ id: "promote-subpage", name: "Promote current subpage", callback: () => this.withActivePage((f) => this.setLevel(f, -1)), hotkeys: key(["Mod", "Alt"], "[") });
+    this.addCommand({ id: "flatten-page-folder", name: "Turn page folder into plain subpages", callback: () => this.flattenPageFolder() });
     this.addCommand({ id: "toggle-ribbon", name: "Collapse or expand the ribbon", callback: () => this.toggleRibbon(), hotkeys: key(["Mod"], "F1") });
     this.addCommand({ id: "full-page-view", name: "Toggle full page view", callback: () => this.toggleFullPage() });
     this.addCommand({ id: "show-panes", name: "Show notebooks and pages panes", callback: () => this.activatePanes(true) });

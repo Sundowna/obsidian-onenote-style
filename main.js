@@ -23,7 +23,1572 @@ __export(main_exports, {
   default: () => main_default
 });
 module.exports = __toCommonJS(main_exports);
+var import_obsidian3 = require("obsidian");
+
+// src/ribbon/view.js
+var import_obsidian2 = require("obsidian");
+
+// src/ribbon/model.js
+var LAYOUT_VERSION = 1;
+var EXPORT_FORMAT = "onenote-style-ribbon-layout";
+var PRIORITIES = ["first", "normal", "last"];
+var SIZES = ["large", "small"];
+var STACK = 3;
+var counter = 0;
+function uid(prefix) {
+  counter += 1;
+  return `${prefix || "x"}-${Date.now().toString(36)}${counter.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+}
+var str = (v, fallback) => typeof v === "string" && v.trim() ? v.trim() : fallback;
+function normalizeLayout(raw) {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) {
+    throw new Error("This is not a ribbon layout (no list of tabs found).");
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const id = (wanted, prefix) => {
+    let v = str(wanted, "") || uid(prefix);
+    while (seen.has(v)) v = uid(prefix);
+    seen.add(v);
+    return v;
+  };
+  const tabs = [];
+  for (const t of raw.tabs) {
+    if (!t || typeof t !== "object") continue;
+    const tab = { id: id(t.id, "tab"), name: str(t.name, "Tab"), hidden: !!t.hidden, groups: [] };
+    for (const g of Array.isArray(t.groups) ? t.groups : []) {
+      if (!g || typeof g !== "object") continue;
+      const group = {
+        id: id(g.id, "grp"),
+        name: str(g.name, "Group"),
+        priority: PRIORITIES.includes(g.priority) ? g.priority : "normal",
+        items: []
+      };
+      for (const i of Array.isArray(g.items) ? g.items : []) {
+        if (!i || typeof i !== "object" || !str(i.command, "")) continue;
+        const item = { id: id(i.id, "btn"), command: i.command.trim(), size: SIZES.includes(i.size) ? i.size : "small" };
+        if (str(i.label, "")) item.label = i.label.trim();
+        if (str(i.icon, "")) item.icon = i.icon.trim();
+        group.items.push(item);
+      }
+      tab.groups.push(group);
+    }
+    tabs.push(tab);
+  }
+  return { version: LAYOUT_VERSION, tabs };
+}
+function findTab(layout, tabId) {
+  return layout.tabs.find((t) => t.id === tabId) || null;
+}
+function findGroup(layout, groupId) {
+  for (const tab of layout.tabs) {
+    const index = tab.groups.findIndex((g) => g.id === groupId);
+    if (index >= 0) return { tab, group: tab.groups[index], index };
+  }
+  return null;
+}
+function findItem(layout, itemId) {
+  for (const tab of layout.tabs) {
+    for (const group of tab.groups) {
+      const index = group.items.findIndex((i) => i.id === itemId);
+      if (index >= 0) return { tab, group, item: group.items[index], index };
+    }
+  }
+  return null;
+}
+function visibleTabs(layout) {
+  return layout.tabs.filter((t) => !t.hidden);
+}
+function activeTab(layout, wantedId) {
+  const visible = visibleTabs(layout);
+  return visible.find((t) => t.id === wantedId) || visible[0] || null;
+}
+function shift(list, index, dir) {
+  const to = index + dir;
+  if (index < 0 || to < 0 || to >= list.length) return false;
+  const [x] = list.splice(index, 1);
+  list.splice(to, 0, x);
+  return true;
+}
+function addTab(layout, name, afterTabId) {
+  const tab = { id: uid("tab"), name: str(name, "New tab"), hidden: false, groups: [] };
+  const at = layout.tabs.findIndex((t) => t.id === afterTabId);
+  layout.tabs.splice(at >= 0 ? at + 1 : layout.tabs.length, 0, tab);
+  return tab;
+}
+function renameTab(layout, tabId, name) {
+  const tab = findTab(layout, tabId);
+  if (!tab || !str(name, "")) return false;
+  tab.name = name.trim();
+  return true;
+}
+function setTabHidden(layout, tabId, hidden) {
+  const tab = findTab(layout, tabId);
+  if (!tab || tab.hidden === !!hidden) return false;
+  if (hidden && visibleTabs(layout).length <= 1) return false;
+  tab.hidden = !!hidden;
+  return true;
+}
+function moveTab(layout, tabId, dir) {
+  const from = layout.tabs.findIndex((t) => t.id === tabId);
+  if (from < 0) return false;
+  let to = from + dir;
+  while (to >= 0 && to < layout.tabs.length && layout.tabs[to].hidden) to += dir;
+  if (to < 0 || to >= layout.tabs.length) return false;
+  const [tab] = layout.tabs.splice(from, 1);
+  layout.tabs.splice(to, 0, tab);
+  return true;
+}
+function removeTab(layout, tabId) {
+  const index = layout.tabs.findIndex((t) => t.id === tabId);
+  if (index < 0) return false;
+  const tab = layout.tabs[index];
+  if (!tab.hidden && visibleTabs(layout).length <= 1) return false;
+  layout.tabs.splice(index, 1);
+  return true;
+}
+function addGroup(layout, tabId, name, afterGroupId) {
+  const tab = findTab(layout, tabId);
+  if (!tab) return null;
+  const group = { id: uid("grp"), name: str(name, "New group"), priority: "normal", items: [] };
+  const at = tab.groups.findIndex((g) => g.id === afterGroupId);
+  tab.groups.splice(at >= 0 ? at + 1 : tab.groups.length, 0, group);
+  return group;
+}
+function renameGroup(layout, groupId, name) {
+  const found = findGroup(layout, groupId);
+  if (!found || !str(name, "")) return false;
+  found.group.name = name.trim();
+  return true;
+}
+function moveGroup(layout, groupId, dir) {
+  const found = findGroup(layout, groupId);
+  return !!found && shift(found.tab.groups, found.index, dir);
+}
+function removeGroup(layout, groupId) {
+  const found = findGroup(layout, groupId);
+  if (!found) return false;
+  found.tab.groups.splice(found.index, 1);
+  return true;
+}
+function setGroupPriority(layout, groupId, priority) {
+  const found = findGroup(layout, groupId);
+  if (!found || !PRIORITIES.includes(priority) || found.group.priority === priority) return false;
+  found.group.priority = priority;
+  return true;
+}
+function addItem(layout, groupId, command, opts) {
+  const found = findGroup(layout, groupId);
+  if (!found || !str(command, "")) return null;
+  const o = opts || {};
+  const item = { id: uid("btn"), command: command.trim(), size: SIZES.includes(o.size) ? o.size : "small" };
+  if (str(o.label, "")) item.label = o.label.trim();
+  if (str(o.icon, "")) item.icon = o.icon.trim();
+  const at = typeof o.index === "number" ? Math.max(0, Math.min(o.index, found.group.items.length)) : found.group.items.length;
+  found.group.items.splice(at, 0, item);
+  return item;
+}
+function removeItem(layout, itemId) {
+  const found = findItem(layout, itemId);
+  if (!found) return false;
+  found.group.items.splice(found.index, 1);
+  return true;
+}
+function shiftItem(layout, itemId, dir) {
+  const found = findItem(layout, itemId);
+  return !!found && shift(found.group.items, found.index, dir);
+}
+function moveItem(layout, itemId, toGroupId, index) {
+  const from = findItem(layout, itemId);
+  const to = findGroup(layout, toGroupId);
+  if (!from || !to) return false;
+  let at = typeof index === "number" ? Math.max(0, Math.min(index, to.group.items.length)) : to.group.items.length;
+  if (from.group === to.group) {
+    if (at === from.index || at === from.index + 1) return false;
+    if (at > from.index) at -= 1;
+  }
+  from.group.items.splice(from.index, 1);
+  to.group.items.splice(at, 0, from.item);
+  return true;
+}
+function setItemSize(layout, itemId, size) {
+  const found = findItem(layout, itemId);
+  if (!found || !SIZES.includes(size) || found.item.size === size) return false;
+  found.item.size = size;
+  return true;
+}
+function renameItem(layout, itemId, label) {
+  const found = findItem(layout, itemId);
+  if (!found) return false;
+  if (str(label, "")) found.item.label = label.trim();
+  else delete found.item.label;
+  return true;
+}
+function setItemIcon(layout, itemId, icon2) {
+  const found = findItem(layout, itemId);
+  if (!found) return false;
+  if (str(icon2, "")) found.item.icon = icon2.trim();
+  else delete found.item.icon;
+  return true;
+}
+function packColumns(items, level) {
+  const cols = [];
+  let stack = null;
+  for (const item of items) {
+    if (level === 0 && item.size === "large") {
+      stack = null;
+      cols.push({ kind: "large", items: [item] });
+      continue;
+    }
+    if (!stack || stack.items.length >= STACK) {
+      stack = { kind: "stack", items: [] };
+      cols.push(stack);
+    }
+    stack.items.push(item);
+  }
+  return cols;
+}
+function exportLayout(layout) {
+  return JSON.stringify({ format: EXPORT_FORMAT, version: LAYOUT_VERSION, tabs: normalizeLayout(layout).tabs }, null, 2);
+}
+function importLayout(text) {
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    throw new Error("This file is not valid JSON.");
+  }
+  if (raw && raw.ribbon && Array.isArray(raw.ribbon.tabs)) raw = raw.ribbon;
+  if (raw && typeof raw.version === "number" && raw.version > LAYOUT_VERSION) {
+    throw new Error("This layout was made by a newer version of the plugin.");
+  }
+  const layout = normalizeLayout(raw);
+  if (!layout.tabs.length) throw new Error("This layout has no tabs.");
+  if (!visibleTabs(layout).length) layout.tabs[0].hidden = false;
+  return layout;
+}
+
+// src/ribbon/collapse.js
+var LEVEL_FULL = 0;
+var LEVEL_SMALL = 1;
+var LEVEL_ICONS = 2;
+var LEVEL_COLLAPSED = 3;
+var BIAS = { first: -1.5, normal: 0, last: 1.5 };
+var bias = (g) => g.priority in BIAS ? BIAS[g.priority] : 0;
+function shrinkSteps(groups) {
+  const steps = [];
+  groups.forEach((g, index) => {
+    for (let level = LEVEL_SMALL; level <= LEVEL_COLLAPSED; level++) {
+      steps.push({ id: g.id, level, key: level + bias(g), index });
+    }
+  });
+  steps.sort((a, b) => a.key - b.key || b.index - a.index || a.level - b.level);
+  return steps.map(({ id, level }) => ({ id, level }));
+}
+function overflowOrder(groups) {
+  return groups.map((g, index) => ({ id: g.id, key: bias(g), index })).sort((a, b) => a.key - b.key || b.index - a.index).map((x) => x.id);
+}
+function totalWidth(groups, levels, gap) {
+  let w = 0;
+  for (const g of groups) w += g.widths[levels[g.id]];
+  return w + gap * Math.max(0, groups.length - 1);
+}
+function shrinkToFit(groups, available, gap) {
+  const levels = {};
+  for (const g of groups) levels[g.id] = LEVEL_FULL;
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  let used = totalWidth(groups, levels, gap);
+  if (used <= available) return { levels, used, fits: true };
+  for (const step of shrinkSteps(groups)) {
+    const g = byId.get(step.id);
+    if (step.level <= levels[g.id] || !(g.widths[step.level] < g.widths[levels[g.id]])) continue;
+    levels[g.id] = step.level;
+    used = totalWidth(groups, levels, gap);
+    if (used <= available) return { levels, used, fits: true };
+  }
+  return { levels, used, fits: false };
+}
+function fitGroups({ groups, available, gap = 0, moreWidth = 0 }) {
+  const all = shrinkToFit(groups, available, gap);
+  if (all.fits) return { levels: all.levels, overflow: [], used: all.used };
+  const order = overflowOrder(groups);
+  const hidden = /* @__PURE__ */ new Set();
+  for (const id of order) {
+    hidden.add(id);
+    const rest = groups.filter((g) => !hidden.has(g.id));
+    const fit = shrinkToFit(rest, available - moreWidth, gap);
+    if (fit.fits || !rest.length) {
+      return {
+        levels: fit.levels,
+        overflow: groups.filter((g) => hidden.has(g.id)).map((g) => g.id),
+        used: fit.used + moreWidth
+      };
+    }
+  }
+  return { levels: {}, overflow: groups.map((g) => g.id), used: moreWidth };
+}
+function fitTabs({ widths, available, active = -1, moreWidth = 0 }) {
+  const all = widths.map((_, i) => i);
+  let used = widths.reduce((a, b) => a + b, 0);
+  if (used <= available) return { visible: all, overflow: [] };
+  const hidden = /* @__PURE__ */ new Set();
+  used += moreWidth;
+  for (let i = widths.length - 1; i >= 0 && used > available; i--) {
+    if (i === active) continue;
+    hidden.add(i);
+    used -= widths[i];
+  }
+  return { visible: all.filter((i) => !hidden.has(i)), overflow: all.filter((i) => hidden.has(i)) };
+}
+
+// src/ribbon/internal.js
+var CORE_PREFIX = {
+  "insert-template": "templates",
+  "insert-current-date": "templates",
+  "insert-current-time": "templates",
+  "outgoing-links": "outgoing-link",
+  "open-with-default-app": "open-with-default-app"
+};
+var BUILT_IN = /* @__PURE__ */ new Set(["editor", "workspace", "app", "theme", "markdown", "window", "mobile", "file-explorer"]);
+function listCommands(app) {
+  try {
+    const c = app.commands;
+    if (!c) return [];
+    if (typeof c.listCommands === "function") return c.listCommands();
+    return Object.values(c.commands || {});
+  } catch (e) {
+    return [];
+  }
+}
+function findCommand(app, id) {
+  try {
+    const c = app.commands;
+    if (!c) return null;
+    if (typeof c.findCommand === "function") return c.findCommand(id) || null;
+    return c.commands && c.commands[id] || c.editorCommands && c.editorCommands[id] || null;
+  } catch (e) {
+    return null;
+  }
+}
+function executeCommand(app, id) {
+  try {
+    if (!findCommand(app, id)) return false;
+    return app.commands.executeCommandById(id) !== false;
+  } catch (e) {
+    console.error("OneNote Style: command failed", id, e);
+    return false;
+  }
+}
+function hotkeyText(app, id) {
+  try {
+    const hm = app.hotkeyManager;
+    if (!hm || typeof hm.printHotkeyForCommand !== "function") return "";
+    return hm.printHotkeyForCommand(id) || "";
+  } catch (e) {
+    return "";
+  }
+}
+function missingReason(app, commandId) {
+  const prefix = commandId.includes(":") ? commandId.slice(0, commandId.indexOf(":")) : commandId;
+  try {
+    if (BUILT_IN.has(prefix)) return "This command is not available in this version of Obsidian.";
+    const community = app.plugins;
+    const manifest = community && community.manifests && community.manifests[prefix];
+    if (manifest) {
+      const on = community.enabledPlugins && community.enabledPlugins.has(prefix);
+      return on ? `The plugin "${manifest.name}" doesn't offer this command (any more).` : `The plugin "${manifest.name}" is turned off. Turn it on in Settings > Community plugins.`;
+    }
+    const core = app.internalPlugins && app.internalPlugins.plugins;
+    const corePlugin = core && core[CORE_PREFIX[prefix] || prefix];
+    if (corePlugin) {
+      const name = corePlugin.instance && corePlugin.instance.name || prefix;
+      return corePlugin.enabled ? `The core plugin "${name}" doesn't offer this command (any more).` : `The core plugin "${name}" is turned off. Turn it on in Settings > Core plugins.`;
+    }
+  } catch (e) {
+  }
+  return `Needs the plugin "${prefix}", which is not installed or is turned off.`;
+}
+function mountPoint(doc) {
+  const parent = doc.body.querySelector(".app-container");
+  const before = parent && parent.querySelector(":scope > .horizontal-main-container");
+  return parent && before ? { parent, before } : null;
+}
+function openSettings(app, tabId) {
+  try {
+    const setting = app.setting;
+    if (!setting) return executeCommand(app, "app:open-settings");
+    setting.open();
+    if (tabId && setting.openTabById) setting.openTabById(tabId);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function isPluginEnabled(app, id) {
+  try {
+    return !!(app.plugins && app.plugins.enabledPlugins && app.plugins.enabledPlugins.has(id) && app.plugins.plugins[id]);
+  } catch (e) {
+    return false;
+  }
+}
+function setDarkMode(app, dark, doc) {
+  try {
+    if (typeof app.changeTheme === "function") {
+      app.changeTheme(dark ? "obsidian" : "moonstone");
+      return true;
+    }
+  } catch (e) {
+  }
+  if (doc.body.classList.contains("theme-dark") !== dark) return executeCommand(app, "theme:toggle-light-dark");
+  return true;
+}
+
+// src/ribbon/modals.js
 var import_obsidian = require("obsidian");
+var CommandPickerModal = class extends import_obsidian.FuzzySuggestModal {
+  constructor(app, onChoose) {
+    super(app);
+    this.onChoose = onChoose;
+    this.modalEl.addClass("onr-picker");
+    this.setPlaceholder("Add a command to the ribbon: type to search...");
+    this.setInstructions([
+      { command: "\u2191\u2193", purpose: "to move" },
+      { command: "\u21B5", purpose: "to add" },
+      { command: "esc", purpose: "to cancel" }
+    ]);
+  }
+  getItems() {
+    return listCommands(this.app).slice().sort((a, b) => a.name.localeCompare(b.name));
+  }
+  getItemText(cmd) {
+    return cmd.name;
+  }
+  renderSuggestion(match, el) {
+    super.renderSuggestion(match, el);
+    el.addClass("onr-picker-item");
+    el.createSpan({ cls: "onr-picker-id", text: match.item.id });
+  }
+  onChooseItem(cmd) {
+    this.onChoose(cmd);
+  }
+};
+var IconPickerModal = class extends import_obsidian.FuzzySuggestModal {
+  constructor(app, onChoose) {
+    super(app);
+    this.onChoose = onChoose;
+    this.limit = 120;
+    this.modalEl.addClass("onr-picker", "onr-icon-picker");
+    this.setPlaceholder('Choose an icon: type to search (for example "star", "file", "arrow")...');
+  }
+  getItems() {
+    return (0, import_obsidian.getIconIds)().map((id) => id.replace(/^lucide-/, "")).sort();
+  }
+  getItemText(id) {
+    return id.replace(/-/g, " ");
+  }
+  renderSuggestion(match, el) {
+    el.addClass("onr-picker-item", "onr-icon-item");
+    (0, import_obsidian.setIcon)(el.createSpan("onr-icon-item-icon"), match.item);
+    el.createSpan({ text: match.item });
+  }
+  onChooseItem(id) {
+    this.onChoose(id);
+  }
+};
+
+// src/ribbon/view.js
+var DRAG_THRESHOLD = 6;
+var TAB_HOVER_MS = 450;
+var PRIORITY_LABEL = { first: "Shrink first", normal: "Shrink normally", last: "Shrink last" };
+var RibbonView = class {
+  constructor(host) {
+    this.host = host;
+    this.app = host.app;
+    this.rev = 0;
+    this.measured = null;
+    this.fitKey = null;
+    this.popover = null;
+    this.press = null;
+    this.drag = null;
+    this.anchor = null;
+    this.suppressClick = false;
+    this.onClick = this.onClick.bind(this);
+    this.onContextMenu = this.onContextMenu.bind(this);
+    this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerMove = this.onPointerMove.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onDragKey = this.onDragKey.bind(this);
+  }
+  get layout() {
+    return this.host.ribbonLayout;
+  }
+  get doc() {
+    return this.bodyEl ? this.bodyEl.ownerDocument : document;
+  }
+  currentTab() {
+    return activeTab(this.layout, this.host.state.ribbonTab);
+  }
+  /* ---------- mounting ---------- */
+  mount(topBar, tabsEl, bodyEl) {
+    this.unmount();
+    this.topBar = topBar;
+    this.tabsEl = tabsEl;
+    this.bodyEl = bodyEl;
+    topBar.addEventListener("click", this.onClick);
+    topBar.addEventListener("contextmenu", this.onContextMenu);
+    topBar.addEventListener("pointerdown", this.onPointerDown);
+    let frame = 0;
+    this.observer = new ResizeObserver(() => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (!this.bodyEl || !this.bodyEl.isConnected) return;
+        this.topBar.toggleClass("is-narrow", this.topBar.clientWidth < 640);
+        this.fitTabRow();
+        this.layoutBody();
+      });
+    });
+    this.observer.observe(topBar);
+    this.render();
+  }
+  unmount() {
+    this.closePopover();
+    this.cancelDrag();
+    if (this.observer) this.observer.disconnect();
+    this.observer = null;
+    if (this.topBar) {
+      this.topBar.removeEventListener("click", this.onClick);
+      this.topBar.removeEventListener("contextmenu", this.onContextMenu);
+      this.topBar.removeEventListener("pointerdown", this.onPointerDown);
+    }
+    this.topBar = this.tabsEl = this.bodyEl = this.strip = null;
+  }
+  render() {
+    this.renderTabs();
+    this.renderBody();
+  }
+  /** Call after any change to the layout. */
+  changed() {
+    this.rev += 1;
+    this.host.saveRibbon();
+    this.render();
+  }
+  /** Forget measured widths (after a font, theme or zoom change) and redraw. */
+  remeasure() {
+    this.measured = null;
+    this.render();
+  }
+  /** Called on a timer: redraws when a plugin was turned on or off. */
+  tick() {
+    if (!this.bodyEl || !this.strip || this.drag || this.popover) return;
+    const tab = this.currentTab();
+    if (!tab || !this.measured) return;
+    if (this.measured.key !== this.measureKey(tab)) this.renderBody();
+  }
+  /** Where a picker opened by the last clicked button should appear, or null. */
+  lastAnchor() {
+    return this.anchor && Date.now() - this.anchor.time < 1500 ? this.anchor.rect : null;
+  }
+  /* ---------- tab row ---------- */
+  renderTabs() {
+    const el = this.tabsEl;
+    if (!el) return;
+    el.empty();
+    const current = this.currentTab();
+    for (const tab of visibleTabs(this.layout)) {
+      el.createDiv({
+        cls: "onenote-tab" + (current && tab.id === current.id ? " is-active" : ""),
+        text: tab.name,
+        attr: { "data-tab": tab.id, role: "tab" }
+      });
+    }
+    this.fitTabRow();
+  }
+  /** Moves tab labels that don't fit into a drop-down at the end of the tab row. */
+  fitTabRow() {
+    const el = this.tabsEl;
+    if (!el || !el.isConnected) return;
+    const old = el.querySelector(".onr-tab-more");
+    if (old) old.remove();
+    const tabs = Array.from(el.querySelectorAll(".onenote-tab"));
+    tabs.forEach((t) => t.removeClass("is-overflow"));
+    if (!tabs.length || el.clientWidth <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
+    const widths = tabs.map((t) => Math.ceil(t.getBoundingClientRect().width) + 2);
+    const active = tabs.findIndex((t) => t.hasClass("is-active"));
+    const fit = fitTabs({ widths, available: el.clientWidth, active, moreWidth: 34 });
+    fit.overflow.forEach((i) => tabs[i].addClass("is-overflow"));
+    if (!fit.overflow.length) return;
+    const more = el.createDiv({ cls: "onenote-tab onr-tab-more", attr: { "aria-label": "More tabs", "data-tooltip-position": "bottom" } });
+    (0, import_obsidian2.setIcon)(more, "chevrons-right");
+    more.onclick = (e) => {
+      e.stopPropagation();
+      const menu = new import_obsidian2.Menu();
+      for (const i of fit.overflow) {
+        const id = tabs[i].dataset.tab;
+        menu.addItem((it) => it.setTitle(tabs[i].textContent).onClick(() => this.selectTab(id)));
+      }
+      const r = more.getBoundingClientRect();
+      menu.showAtPosition({ x: r.left, y: r.bottom + 2 });
+    };
+  }
+  selectTab(id) {
+    const state = this.host.state;
+    state.ribbonTab = id;
+    if (state.ribbonCollapsed) state.ribbonCollapsed = false;
+    this.host.saveRibbon();
+    this.render();
+  }
+  /* ---------- ribbon body ---------- */
+  renderBody() {
+    this.closePopover();
+    const el = this.bodyEl;
+    if (!el) return;
+    el.empty();
+    this.strip = null;
+    this.fitKey = null;
+    const collapsed = !!this.host.state.ribbonCollapsed;
+    this.topBar.toggleClass("is-ribbon-collapsed", collapsed);
+    if (collapsed) return;
+    this.strip = el.createDiv("onr-strip");
+    const collapse = el.createDiv({ cls: "onenote-ribbon-collapse", attr: { "aria-label": "Collapse the ribbon (Ctrl+F1)", "data-tooltip-position": "left" } });
+    (0, import_obsidian2.setIcon)(collapse, "chevron-up");
+    collapse.onclick = () => this.host.toggleRibbon();
+    const tab = this.currentTab();
+    if (!tab) return;
+    if (!tab.groups.length) {
+      const empty = this.strip.createEl("button", { cls: "onr-empty", attr: { type: "button" } });
+      (0, import_obsidian2.setIcon)(empty.createSpan("onr-empty-icon"), "plus");
+      empty.createSpan({ text: "Add a group" });
+      empty.onclick = (e) => {
+        e.stopPropagation();
+        this.promptAddGroup(tab.id);
+      };
+      this.strip.createSpan({ cls: "onr-empty-hint", text: "This tab is empty. Right-click anywhere on the ribbon to customise it." });
+      return;
+    }
+    this.measure(tab);
+    this.layoutBody();
+  }
+  measureKey(tab) {
+    let avail = "";
+    for (const g of tab.groups) for (const i of g.items) avail += findCommand(this.app, i.command) ? "1" : "0";
+    return [tab.id, this.rev, avail].join("|");
+  }
+  /** Measures how wide every group of the tab is at each of the four size levels. */
+  measure(tab) {
+    const key = this.measureKey(tab);
+    if (this.measured && this.measured.key === key) return;
+    const strip = this.strip;
+    strip.addClass("is-measuring");
+    const widths = {};
+    for (const g of tab.groups) {
+      widths[g.id] = [];
+      for (let level = LEVEL_FULL; level <= LEVEL_COLLAPSED; level++) {
+        const node = this.drawGroup(strip, g, level);
+        widths[g.id][level] = Math.ceil(node.getBoundingClientRect().width);
+        node.remove();
+      }
+    }
+    const more = this.drawMore(strip, []);
+    const moreWidth = Math.ceil(more.getBoundingClientRect().width);
+    more.remove();
+    strip.removeClass("is-measuring");
+    this.measured = { key, widths, moreWidth };
+  }
+  /** Picks a size level for every group so the tab fits the current width, then draws it. */
+  layoutBody() {
+    const strip = this.strip;
+    const tab = this.currentTab();
+    if (!strip || !strip.isConnected || !tab || !tab.groups.length || !this.measured) return;
+    const available = Math.floor(strip.clientWidth);
+    if (available <= 0) return;
+    const fit = fitGroups({
+      groups: tab.groups.map((g) => ({ id: g.id, priority: g.priority, widths: this.measured.widths[g.id] })),
+      available,
+      gap: 0,
+      moreWidth: this.measured.moreWidth
+    });
+    const key = JSON.stringify([fit.levels, fit.overflow]);
+    if (key === this.fitKey) return;
+    this.fitKey = key;
+    this.closePopover();
+    strip.empty();
+    const overflow = [];
+    for (const g of tab.groups) {
+      if (fit.overflow.includes(g.id)) overflow.push(g);
+      else this.drawGroup(strip, g, fit.levels[g.id]);
+    }
+    if (overflow.length) this.drawMore(strip, overflow);
+    strip.dataset.fit = key;
+  }
+  drawGroup(parent, group, level) {
+    const el = parent.createDiv({ cls: "onr-group", attr: { "data-group": group.id, "data-level": String(level) } });
+    if (level === LEVEL_COLLAPSED && group.items.length) {
+      el.addClass("is-collapsed");
+      const b = el.createEl("button", { cls: "onr-btn is-large onr-group-button", attr: { type: "button", "aria-label": group.name, "data-tooltip-position": "bottom", "aria-haspopup": "true" } });
+      const first = group.items[0];
+      this.drawIcon(b.createSpan("onr-btn-icon"), first, findCommand(this.app, first.command), group.name);
+      b.createSpan({ cls: "onr-btn-label", text: group.name });
+      (0, import_obsidian2.setIcon)(b.createSpan("onr-btn-caret"), "chevron-down");
+      return el;
+    }
+    const body = el.createDiv("onr-group-body");
+    if (!group.items.length) {
+      const add = body.createEl("button", { cls: "onr-btn is-large onr-add", attr: { type: "button", "aria-label": "Add a command to this group", "data-tooltip-position": "bottom" } });
+      (0, import_obsidian2.setIcon)(add.createSpan("onr-btn-icon"), "plus");
+      add.createSpan({ cls: "onr-btn-label", text: "Add" });
+    }
+    for (const col of packColumns(group.items, level)) {
+      if (col.kind === "large") {
+        this.drawButton(body, col.items[0], "large");
+      } else {
+        const stack = body.createDiv("onr-stack");
+        for (const item of col.items) this.drawButton(stack, item, level === LEVEL_ICONS ? "icon" : "small");
+      }
+    }
+    el.createDiv({ cls: "onr-group-label", text: group.name });
+    return el;
+  }
+  drawButton(parent, item, mode) {
+    const cmd = findCommand(this.app, item.command);
+    const label = this.labelOf(item, cmd);
+    const b = parent.createEl("button", { cls: `onr-btn is-${mode}`, attr: { type: "button", "data-item": item.id, "data-tooltip-position": "bottom" } });
+    this.drawIcon(b.createSpan("onr-btn-icon"), item, cmd, label);
+    if (mode !== "icon") b.createSpan({ cls: "onr-btn-label", text: label });
+    if (cmd) {
+      const keys = hotkeyText(this.app, item.command);
+      const name = cmd.name && cmd.name.toLowerCase() !== label.toLowerCase() ? `${label}: ${cmd.name}` : label;
+      b.setAttr("aria-label", keys ? `${name} (${keys})` : name);
+    } else {
+      b.addClass("is-disabled");
+      b.setAttr("aria-disabled", "true");
+      b.setAttr("aria-label", `${label} - not available. ${missingReason(this.app, item.command)}`);
+    }
+    return b;
+  }
+  labelOf(item, cmd) {
+    if (item.label) return item.label;
+    if (cmd && cmd.name) return cmd.name.replace(/^[^:]{1,40}: /, "");
+    const id = item.command;
+    return id.slice(id.indexOf(":") + 1).replace(/-/g, " ");
+  }
+  drawIcon(el, item, cmd, label) {
+    for (const id of [item.icon, cmd && cmd.icon]) {
+      if (id && /^[\w-]+$/.test(id) && (0, import_obsidian2.getIcon)(id)) {
+        (0, import_obsidian2.setIcon)(el, id);
+        return;
+      }
+    }
+    el.addClass("is-glyph");
+    el.setText((label.trim()[0] || "?").toUpperCase());
+  }
+  drawMore(parent, groups) {
+    const el = parent.createDiv("onr-more");
+    const b = el.createEl("button", { cls: "onr-btn is-large onr-more-button", attr: { type: "button", "aria-label": "More commands", "data-tooltip-position": "bottom", "aria-haspopup": "true" } });
+    (0, import_obsidian2.setIcon)(b.createSpan("onr-btn-icon"), "chevrons-right");
+    b.createSpan({ cls: "onr-btn-label", text: "More" });
+    (0, import_obsidian2.setIcon)(b.createSpan("onr-btn-caret"), "chevron-down");
+    this.moreGroups = groups;
+    return el;
+  }
+  /* ---------- drop-downs ---------- */
+  openPopover(anchorEl, cls, build) {
+    const wasOpen = this.popover && this.popover.anchor === anchorEl;
+    this.closePopover();
+    if (wasOpen) return;
+    const doc = this.doc;
+    const pop = doc.body.createDiv("onr-popover " + cls);
+    pop.addEventListener("mousedown", (e) => e.preventDefault());
+    pop.addEventListener("click", this.onClick);
+    pop.addEventListener("contextmenu", this.onContextMenu);
+    build(pop);
+    const r = anchorEl.getBoundingClientRect();
+    const vw = doc.documentElement.clientWidth;
+    const vh = doc.documentElement.clientHeight;
+    pop.style.maxWidth = vw - 16 + "px";
+    const top = r.bottom + 4;
+    pop.style.maxHeight = Math.max(120, vh - top - 8) + "px";
+    pop.style.top = top + "px";
+    pop.style.left = Math.max(8, Math.min(r.left, vw - pop.offsetWidth - 8)) + "px";
+    const onDown = (e) => {
+      if (pop.contains(e.target) || anchorEl.contains(e.target)) return;
+      if (e.target.closest && e.target.closest(".menu")) return;
+      this.closePopover();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") this.closePopover();
+    };
+    doc.addEventListener("mousedown", onDown, true);
+    doc.addEventListener("keydown", onKey, true);
+    anchorEl.addClass("is-open");
+    anchorEl.setAttr("aria-expanded", "true");
+    this.popover = {
+      el: pop,
+      anchor: anchorEl,
+      close: () => {
+        pop.remove();
+        doc.removeEventListener("mousedown", onDown, true);
+        doc.removeEventListener("keydown", onKey, true);
+        anchorEl.removeClass("is-open");
+        anchorEl.setAttr("aria-expanded", "false");
+      }
+    };
+  }
+  closePopover() {
+    const p = this.popover;
+    if (!p) return;
+    this.popover = null;
+    p.close();
+  }
+  openGroupPopover(groupId, anchorEl) {
+    const found = findGroup(this.layout, groupId);
+    if (!found) return;
+    this.openPopover(anchorEl, "onr-popover-group", (pop) => this.drawGroup(pop, found.group, LEVEL_FULL));
+  }
+  openMorePopover(anchorEl) {
+    const groups = this.moreGroups || [];
+    this.openPopover(anchorEl, "onr-popover-more", (pop) => {
+      for (const g of groups) {
+        const sec = pop.createDiv({ cls: "onr-more-group", attr: { "data-group": g.id } });
+        sec.createDiv({ cls: "onr-more-title", text: g.name });
+        const body = sec.createDiv("onr-more-items");
+        if (!g.items.length) body.createSpan({ cls: "onr-empty-hint", text: "Empty group. Right-click to add a command." });
+        for (const item of g.items) this.drawButton(body, item, "small");
+      }
+    });
+  }
+  /* ---------- clicks ---------- */
+  onClick(e) {
+    if (this.suppressClick) return;
+    const t = e.target;
+    const tabEl = t.closest(".onenote-tab[data-tab]");
+    if (tabEl) {
+      this.selectTab(tabEl.dataset.tab);
+      return;
+    }
+    const itemEl = t.closest("[data-item]");
+    if (itemEl) {
+      this.runItem(itemEl.dataset.item, itemEl);
+      return;
+    }
+    if (t.closest(".onr-add")) {
+      const g = t.closest("[data-group]");
+      if (g) this.pickCommand(g.dataset.group);
+      return;
+    }
+    const groupButton = t.closest(".onr-group-button");
+    if (groupButton) {
+      this.openGroupPopover(groupButton.closest("[data-group]").dataset.group, groupButton);
+      return;
+    }
+    const moreButton = t.closest(".onr-more-button");
+    if (moreButton) this.openMorePopover(moreButton);
+  }
+  runItem(itemId, el) {
+    const found = findItem(this.layout, itemId);
+    if (!found) return;
+    this.anchor = { rect: el.getBoundingClientRect(), time: Date.now() };
+    this.closePopover();
+    if (!findCommand(this.app, found.item.command)) {
+      new import_obsidian2.Notice(`"${this.labelOf(found.item, null)}" is not available. ${missingReason(this.app, found.item.command)}`);
+      return;
+    }
+    this.host.runRibbonCommand(found.item.command);
+  }
+  /* ---------- right-click menus ---------- */
+  onContextMenu(e) {
+    const t = e.target;
+    if (t.closest("input, textarea, .onenote-section-tabs, .onenote-qat")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const itemEl = t.closest("[data-item]");
+    const groupEl = t.closest("[data-group]");
+    const tabEl = t.closest(".onenote-tab[data-tab]");
+    let menu;
+    if (itemEl) menu = this.itemMenu(itemEl.dataset.item, e);
+    else if (groupEl) menu = this.groupMenu(groupEl.dataset.group);
+    else {
+      const tab = tabEl ? findTab(this.layout, tabEl.dataset.tab) : this.currentTab();
+      menu = this.tabMenu(tab, !!tabEl);
+    }
+    if (menu) menu.showAtMouseEvent(e);
+  }
+  itemMenu(itemId, e) {
+    const found = findItem(this.layout, itemId);
+    if (!found) return null;
+    const { item, group, index } = found;
+    const L2 = this.layout;
+    const menu = new import_obsidian2.Menu();
+    menu.addItem((i) => i.setTitle("Rename...").setIcon("pencil").onClick(async () => {
+      const name = await this.host.promptText("Rename button", this.labelOf(item, findCommand(this.app, item.command)), "Rename");
+      if (name && renameItem(L2, itemId, name)) this.changed();
+    }));
+    menu.addItem((i) => i.setTitle("Change icon...").setIcon("image").onClick(() => {
+      new IconPickerModal(this.app, (icon2) => {
+        if (setItemIcon(L2, itemId, icon2)) this.changed();
+      }).open();
+    }));
+    if (item.label || item.icon) {
+      menu.addItem((i) => i.setTitle("Use the command's own name and icon").setIcon("rotate-ccw").onClick(() => {
+        renameItem(L2, itemId, "");
+        setItemIcon(L2, itemId, "");
+        this.changed();
+      }));
+    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Large button").setIcon("square").setChecked(item.size === "large").onClick(() => {
+      if (setItemSize(L2, itemId, "large")) this.changed();
+    }));
+    menu.addItem((i) => i.setTitle("Small button").setIcon("rows-3").setChecked(item.size === "small").onClick(() => {
+      if (setItemSize(L2, itemId, "small")) this.changed();
+    }));
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Move left").setIcon("arrow-left").setDisabled(index === 0).onClick(() => {
+      if (shiftItem(L2, itemId, -1)) this.changed();
+    }));
+    menu.addItem((i) => i.setTitle("Move right").setIcon("arrow-right").setDisabled(index === group.items.length - 1).onClick(() => {
+      if (shiftItem(L2, itemId, 1)) this.changed();
+    }));
+    menu.addItem((i) => i.setTitle("Move to group...").setIcon("folder-input").onClick(() => {
+      const pick = new import_obsidian2.Menu();
+      for (const tab of L2.tabs) {
+        const groups = tab.groups.filter((g) => g.id !== group.id);
+        if (!groups.length) continue;
+        pick.addItem((x) => x.setTitle(tab.name).setIsLabel(true));
+        for (const g of groups) {
+          pick.addItem((x) => x.setTitle(g.name).setIcon("corner-down-right").onClick(() => {
+            if (moveItem(L2, itemId, g.id)) this.changed();
+          }));
+        }
+      }
+      pick.showAtPosition({ x: e.clientX, y: e.clientY });
+    }));
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Remove from ribbon").setIcon("trash-2").setWarning(true).onClick(() => {
+      if (removeItem(L2, itemId)) this.changed();
+    }));
+    return menu;
+  }
+  groupMenu(groupId) {
+    const found = findGroup(this.layout, groupId);
+    if (!found) return null;
+    const { group, tab, index } = found;
+    const L2 = this.layout;
+    const menu = new import_obsidian2.Menu();
+    menu.addItem((i) => i.setTitle("Add command...").setIcon("plus").onClick(() => this.pickCommand(groupId)));
+    menu.addItem((i) => i.setTitle("Rename group...").setIcon("pencil").onClick(async () => {
+      const name = await this.host.promptText("Rename group", group.name, "Rename");
+      if (name && renameGroup(L2, groupId, name)) this.changed();
+    }));
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Move group left").setIcon("arrow-left").setDisabled(index === 0).onClick(() => {
+      if (moveGroup(L2, groupId, -1)) this.changed();
+    }));
+    menu.addItem((i) => i.setTitle("Move group right").setIcon("arrow-right").setDisabled(index === tab.groups.length - 1).onClick(() => {
+      if (moveGroup(L2, groupId, 1)) this.changed();
+    }));
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("When space runs out").setIsLabel(true));
+    for (const p of PRIORITIES) {
+      menu.addItem((i) => i.setTitle(PRIORITY_LABEL[p]).setChecked(group.priority === p).onClick(() => {
+        if (setGroupPriority(L2, groupId, p)) this.changed();
+      }));
+    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("New group...").setIcon("folder-plus").onClick(() => this.promptAddGroup(tab.id, groupId)));
+    menu.addItem((i) => i.setTitle("Delete group").setIcon("trash-2").setWarning(true).onClick(async () => {
+      if (group.items.length) {
+        const ok = await this.host.confirm("Delete group", `Delete the group "${group.name}" and its ${group.items.length} button(s)?`, "Delete");
+        if (!ok) return;
+      }
+      if (removeGroup(L2, groupId)) this.changed();
+    }));
+    return menu;
+  }
+  tabMenu(tab, onTab) {
+    const L2 = this.layout;
+    const menu = new import_obsidian2.Menu();
+    if (tab) {
+      menu.addItem((i) => i.setTitle("New group...").setIcon("folder-plus").onClick(() => this.promptAddGroup(tab.id)));
+      menu.addSeparator();
+    }
+    menu.addItem((i) => i.setTitle("New tab...").setIcon("plus").onClick(async () => {
+      const name = await this.host.promptText("New tab", "", "Add");
+      if (!name) return;
+      const created = addTab(L2, name, tab ? tab.id : null);
+      this.host.state.ribbonTab = created.id;
+      this.changed();
+    }));
+    if (tab) {
+      const visible = visibleTabs(L2);
+      const pos = visible.indexOf(tab);
+      menu.addItem((i) => i.setTitle(`Rename tab "${tab.name}"...`).setIcon("pencil").onClick(async () => {
+        const name = await this.host.promptText("Rename tab", tab.name, "Rename");
+        if (name && renameTab(L2, tab.id, name)) this.changed();
+      }));
+      menu.addItem((i) => i.setTitle("Move tab left").setIcon("arrow-left").setDisabled(pos <= 0).onClick(() => {
+        if (moveTab(L2, tab.id, -1)) this.changed();
+      }));
+      menu.addItem((i) => i.setTitle("Move tab right").setIcon("arrow-right").setDisabled(pos < 0 || pos === visible.length - 1).onClick(() => {
+        if (moveTab(L2, tab.id, 1)) this.changed();
+      }));
+      menu.addItem((i) => i.setTitle(`Hide tab "${tab.name}"`).setIcon("eye-off").setDisabled(visible.length <= 1).onClick(() => {
+        if (setTabHidden(L2, tab.id, true)) this.changed();
+      }));
+      menu.addItem((i) => i.setTitle(`Delete tab "${tab.name}"...`).setIcon("trash-2").setWarning(true).setDisabled(visible.length <= 1).onClick(async () => {
+        const ok = await this.host.confirm("Delete tab", `Delete the tab "${tab.name}" with all its groups and buttons? To keep it for later, hide it instead.`, "Delete");
+        if (ok && removeTab(L2, tab.id)) this.changed();
+      }));
+    }
+    const hidden = L2.tabs.filter((t) => t.hidden);
+    if (hidden.length) {
+      menu.addSeparator();
+      menu.addItem((i) => i.setTitle("Hidden tabs").setIsLabel(true));
+      for (const t of hidden) {
+        menu.addItem((i) => i.setTitle(`Show "${t.name}"`).setIcon("eye").onClick(() => {
+          if (setTabHidden(L2, t.id, false)) {
+            this.host.state.ribbonTab = t.id;
+            this.changed();
+          }
+        }));
+      }
+    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Export layout...").setIcon("download").onClick(() => this.host.exportRibbon()));
+    menu.addItem((i) => i.setTitle("Import layout...").setIcon("upload").onClick(() => this.host.importRibbon()));
+    menu.addItem((i) => i.setTitle("Reset to default...").setIcon("rotate-ccw").onClick(() => this.host.resetRibbon()));
+    if (!onTab) {
+      menu.addSeparator();
+      menu.addItem((i) => i.setTitle("Collapse the ribbon").setIcon("chevron-up").onClick(() => this.host.toggleRibbon()));
+    }
+    return menu;
+  }
+  pickCommand(groupId) {
+    new CommandPickerModal(this.app, (cmd) => {
+      if (addItem(this.layout, groupId, cmd.id, { size: "small" })) this.changed();
+    }).open();
+  }
+  async promptAddGroup(tabId, afterGroupId) {
+    const name = await this.host.promptText("New group", "", "Add");
+    if (!name) return;
+    const group = addGroup(this.layout, tabId, name, afterGroupId);
+    if (!group) return;
+    this.changed();
+    this.pickCommand(group.id);
+  }
+  /* ---------- drag and drop (pointer events, so it also works with touch) ---------- */
+  onPointerDown(e) {
+    if (e.button !== 0 || !this.strip) return;
+    const el = e.target.closest("[data-item]");
+    if (!el || !this.strip.contains(el)) return;
+    this.press = { id: el.dataset.item, x: e.clientX, y: e.clientY, el };
+    const doc = this.doc;
+    doc.addEventListener("pointermove", this.onPointerMove, true);
+    doc.addEventListener("pointerup", this.onPointerUp, true);
+    doc.addEventListener("pointercancel", this.onPointerUp, true);
+    doc.addEventListener("keydown", this.onDragKey, true);
+  }
+  onPointerMove(e) {
+    const p = this.press;
+    if (!p) return;
+    if (!this.drag) {
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
+      this.startDrag(p);
+    }
+    const d = this.drag;
+    d.ghost.style.left = e.clientX + 10 + "px";
+    d.ghost.style.top = e.clientY + 12 + "px";
+    this.updateDropTarget(e.clientX, e.clientY);
+  }
+  startDrag(p) {
+    this.closePopover();
+    const doc = this.doc;
+    const ghost = p.el.cloneNode(true);
+    ghost.removeAttribute("data-item");
+    ghost.removeAttribute("aria-label");
+    ghost.addClass("onr-ghost");
+    doc.body.appendChild(ghost);
+    const line = doc.body.createDiv("onr-drop-line");
+    p.el.addClass("is-drag-source");
+    this.topBar.addClass("is-dragging");
+    this.drag = { id: p.id, ghost, line, target: null, hoverTab: null, hoverTimer: 0 };
+  }
+  updateDropTarget(x, y) {
+    const d = this.drag;
+    const doc = this.doc;
+    d.target = null;
+    d.line.style.display = "none";
+    doc.querySelectorAll(".onr-group.is-drop-target").forEach((g) => g.removeClass("is-drop-target"));
+    const under = doc.elementFromPoint(x, y);
+    const tabEl = under && under.closest(".onenote-tab[data-tab]");
+    const tabId = tabEl ? tabEl.dataset.tab : null;
+    if (tabId !== d.hoverTab) {
+      window.clearTimeout(d.hoverTimer);
+      d.hoverTab = tabId;
+      const current = this.currentTab();
+      if (tabId && (!current || current.id !== tabId)) {
+        d.hoverTimer = window.setTimeout(() => {
+          if (this.drag !== d) return;
+          this.host.state.ribbonTab = tabId;
+          this.render();
+        }, TAB_HOVER_MS);
+      }
+    }
+    if (!under || !this.strip || !this.strip.contains(under)) return;
+    const groupEl = under.closest("[data-group]");
+    if (!groupEl) return;
+    const found = findGroup(this.layout, groupEl.dataset.group);
+    if (!found) return;
+    const itemEl = under.closest("[data-item]");
+    if (itemEl && itemEl.dataset.item === d.id) return;
+    if (itemEl) {
+      const index = found.group.items.findIndex((i) => i.id === itemEl.dataset.item);
+      const r = itemEl.getBoundingClientRect();
+      const sideways = itemEl.hasClass("is-large");
+      const before = sideways ? x < r.left + r.width / 2 : y < r.top + r.height / 2;
+      d.target = { groupId: found.group.id, index: index + (before ? 0 : 1) };
+      const s = d.line.style;
+      s.display = "block";
+      if (sideways) {
+        s.left = (before ? r.left - 2 : r.right) + "px";
+        s.top = r.top + "px";
+        s.width = "2px";
+        s.height = r.height + "px";
+      } else {
+        s.left = r.left + "px";
+        s.top = (before ? r.top - 1 : r.bottom - 1) + "px";
+        s.width = r.width + "px";
+        s.height = "2px";
+      }
+      return;
+    }
+    d.target = { groupId: found.group.id };
+    groupEl.addClass("is-drop-target");
+  }
+  onPointerUp() {
+    const d = this.drag;
+    const target = d && d.target;
+    this.cancelDrag();
+    if (!d) return;
+    this.suppressClick = true;
+    window.setTimeout(() => {
+      this.suppressClick = false;
+    }, 0);
+    if (target && moveItem(this.layout, d.id, target.groupId, target.index)) this.changed();
+    else this.render();
+  }
+  onDragKey(e) {
+    if (e.key !== "Escape" || !this.drag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.cancelDrag();
+    this.render();
+  }
+  cancelDrag() {
+    const doc = this.doc;
+    doc.removeEventListener("pointermove", this.onPointerMove, true);
+    doc.removeEventListener("pointerup", this.onPointerUp, true);
+    doc.removeEventListener("pointercancel", this.onPointerUp, true);
+    doc.removeEventListener("keydown", this.onDragKey, true);
+    this.press = null;
+    const d = this.drag;
+    this.drag = null;
+    if (!d) return;
+    window.clearTimeout(d.hoverTimer);
+    d.ghost.remove();
+    d.line.remove();
+    doc.querySelectorAll(".is-drag-source").forEach((x) => x.removeClass("is-drag-source"));
+    doc.querySelectorAll(".onr-group.is-drop-target").forEach((g) => g.removeClass("is-drop-target"));
+    if (this.topBar) this.topBar.removeClass("is-dragging");
+  }
+};
+
+// src/ribbon/defaults.js
+var O = "onenote-style:";
+var L = (command, label, icon2) => ({ command, label, icon: icon2, size: "large" });
+var S = (command, label, icon2) => ({ command, label, icon: icon2, size: "small" });
+var G = (id, name, items, priority) => ({ id, name, priority: priority || "normal", items });
+var T = (id, name, groups) => ({ id, name, groups });
+var TABS = [
+  T("home", "Home", [
+    G("home-clipboard", "Clipboard", [
+      L(O + "paste", "Paste", "clipboard-paste"),
+      S(O + "cut", "Cut", "scissors"),
+      S(O + "copy", "Copy", "copy"),
+      S("editor:clear-formatting", "Clear", "eraser")
+    ], "last"),
+    G("home-text", "Basic Text", [
+      S("editor:toggle-bold", "Bold", "bold"),
+      S("editor:toggle-italics", "Italic", "italic"),
+      S(O + "underline", "Underline", "underline"),
+      S("editor:toggle-strikethrough", "Strike", "strikethrough"),
+      S(O + "highlight-color", "Highlight", "highlighter"),
+      S(O + "font-color", "Font Color", "baseline"),
+      S(O + "subscript", "Subscript", "subscript"),
+      S(O + "superscript", "Superscript", "superscript"),
+      S("editor:toggle-code", "Code", "code")
+    ], "last"),
+    G("home-paragraph", "Paragraph", [
+      S("editor:toggle-bullet-list", "Bullets", "list"),
+      S("editor:toggle-numbered-list", "Numbering", "list-ordered"),
+      S("editor:toggle-checklist-status", "Checkbox", "list-checks"),
+      S("editor:unindent-list", "Outdent", "outdent"),
+      S("editor:indent-list", "Indent", "indent"),
+      S("editor:toggle-blockquote", "Quote", "quote")
+    ]),
+    G("home-styles", "Styles", [
+      S(O + "heading-1", "Heading 1", "heading-1"),
+      S(O + "heading-2", "Heading 2", "heading-2"),
+      S(O + "heading-3", "Heading 3", "heading-3"),
+      S(O + "heading-4", "Heading 4", "heading-4"),
+      S(O + "normal", "Normal", "pilcrow")
+    ]),
+    G("home-tags", "Tags", [
+      L(O + "tag-todo", "To Do", "check-square"),
+      S(O + "tag-important", "Important", "star"),
+      S(O + "tag-question", "Question", "help-circle"),
+      S(O + "tag-remember", "Remember", "bookmark"),
+      S(O + "tag-definition", "Definition", "book-open"),
+      S(O + "tag-idea", "Idea", "lightbulb"),
+      S(O + "find-tags", "Find Tags", "search-check")
+    ]),
+    G("home-pages", "Pages", [
+      L(O + "new-page", "New Page", "file-plus"),
+      S(O + "new-subpage", "New Subpage", "corner-down-right"),
+      S(O + "make-subpage", "Make Subpage", "indent"),
+      S(O + "promote-subpage", "Promote", "outdent")
+    ]),
+    G("home-ai", "AI", [
+      L("ai-chatbridge:sync-all-chats", "Sync All", "refresh-cw"),
+      L("ai-chatbridge:stop-sync", "Stop All", "square"),
+      S("ai-chatbridge:sync-claude-chats", "Claude", "onenote-ai-claude"),
+      S("ai-chatbridge:sync-chatgpt-chats", "ChatGPT", "onenote-ai-openai"),
+      S("ai-chatbridge:sync-gemini-chats", "Gemini", "sparkles"),
+      S("ai-chatbridge:sync-lumo-chats", "Lumo", "onenote-ai-lumo"),
+      S("ai-chatbridge:sync-desktop-app-chats", "Desktop Apps", "monitor"),
+      S("ai-chatbridge:sync-hermes-chats", "Hermes", "bot")
+    ], "first"),
+    G("home-appearance", "Appearance", [
+      L("theme:toggle-light-dark", "Light / Dark", "sun-moon"),
+      S(O + "use-light-mode", "Light", "sun"),
+      S(O + "use-dark-mode", "Dark", "moon"),
+      S("theme:switch", "Theme", "palette")
+    ], "first")
+  ]),
+  T("insert", "Insert", [
+    G("insert-tables", "Tables", [
+      L(O + "insert-table-grid", "Table", "table")
+    ]),
+    G("insert-files", "Files", [
+      L("editor:attach-file", "Attachment", "paperclip"),
+      S("editor:insert-embed", "Embed Page", "file-input"),
+      S("insert-template", "Template", "layout-template"),
+      S("obsidian-excalidraw-plugin:excalidraw-autocreate-and-embed", "Drawing", "pencil-ruler")
+    ]),
+    G("insert-links", "Links", [
+      L("editor:insert-link", "Link", "link"),
+      S("editor:insert-wikilink", "Page Link", "file-symlink"),
+      S("editor:insert-tag", "Tag", "tag"),
+      S("editor:insert-footnote", "Footnote", "file-signature")
+    ]),
+    G("insert-stamp", "Time Stamp", [
+      S(O + "insert-date", "Date", "calendar"),
+      S(O + "insert-time", "Time", "clock"),
+      S(O + "insert-datetime", "Date & Time", "calendar-clock")
+    ]),
+    G("insert-blocks", "Blocks", [
+      S("editor:insert-callout", "Callout", "message-square"),
+      S("editor:insert-codeblock", "Code Block", "code-2"),
+      S("editor:insert-horizontal-rule", "Divider", "minus"),
+      S("editor:toggle-blockquote", "Quote", "quote"),
+      S("editor:insert-mathblock", "Equation", "sigma"),
+      S("editor:toggle-inline-math", "Inline Math", "square-function")
+    ]),
+    G("insert-symbols", "Symbols", [
+      L(O + "insert-symbol", "Symbol", "omega")
+    ]),
+    G("insert-pages", "Pages", [
+      L(O + "new-canvas-page", "Canvas Page", "layout-dashboard"),
+      S("bases:insert", "Base", "layout-list"),
+      S(O + "new-page", "New Page", "file-plus")
+    ])
+  ]),
+  T("view", "View", [
+    G("view-views", "Views", [
+      L("markdown:toggle-preview", "Read / Edit", "book-open"),
+      L(O + "full-page-view", "Full Page", "maximize-2"),
+      S("editor:toggle-source", "Source Mode", "code-2"),
+      S("editor:toggle-readable-line-length", "Line Width", "ruler"),
+      S("editor:toggle-line-numbers", "Line Numbers", "list-ordered")
+    ]),
+    G("view-zoom", "Zoom", [
+      L("window:zoom-in", "Zoom In", "zoom-in"),
+      L("window:zoom-out", "Zoom Out", "zoom-out"),
+      L("window:reset-zoom", "100%", "scan")
+    ], "last"),
+    G("view-page", "Page Setup", [
+      S(O + "page-color", "Page Color", "paint-bucket"),
+      S(O + "rule-lines", "Rule Lines", "align-justify"),
+      S(O + "page-width", "Page Width", "move-horizontal")
+    ]),
+    G("view-panes", "Show", [
+      S("app:toggle-left-sidebar", "Left Sidebar", "panel-left"),
+      S("app:toggle-right-sidebar", "Right Sidebar", "panel-right"),
+      S(O + "toggle-section-tabs", "Section Tabs", "folder-kanban"),
+      S("outline:open", "Outline", "list-tree"),
+      S("properties:open-local", "Properties", "info"),
+      S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed")
+    ]),
+    G("view-window", "Window", [
+      S("workspace:split-vertical", "Split Right", "separator-vertical"),
+      S("workspace:split-horizontal", "Split Down", "separator-horizontal"),
+      S("workspace:open-in-new-window", "New Window", "app-window"),
+      S("workspace:toggle-stacked-tabs", "Stacked Tabs", "layers"),
+      S("workspace:toggle-pin", "Pin Tab", "pin"),
+      S("window:toggle-always-on-top", "Always on Top", "arrow-up-to-line")
+    ]),
+    G("view-folding", "Folding", [
+      S("editor:fold-all", "Fold All", "chevrons-down-up"),
+      S("editor:unfold-all", "Unfold All", "chevrons-up-down"),
+      S("editor:toggle-fold", "Fold Line", "fold-vertical")
+    ], "first")
+  ]),
+  T("table", "Table", [
+    G("table-insert", "Table", [
+      L("editor:insert-table", "Insert Table", "table"),
+      L(O + "insert-table-grid", "Table Grid", "grid-3x3")
+    ]),
+    G("table-rows", "Rows", [
+      S("editor:table-row-before", "Add Above", "arrow-up-to-line"),
+      S("editor:table-row-after", "Add Below", "arrow-down-to-line"),
+      S("editor:table-row-delete", "Delete Row", "trash-2"),
+      S("editor:table-row-up", "Move Up", "arrow-up"),
+      S("editor:table-row-down", "Move Down", "arrow-down"),
+      S("editor:table-row-copy", "Duplicate", "copy")
+    ]),
+    G("table-columns", "Columns", [
+      S("editor:table-col-before", "Add Left", "arrow-left-to-line"),
+      S("editor:table-col-after", "Add Right", "arrow-right-to-line"),
+      S("editor:table-col-delete", "Delete Column", "trash-2"),
+      S("editor:table-col-left", "Move Left", "arrow-left"),
+      S("editor:table-col-right", "Move Right", "arrow-right"),
+      S("editor:table-col-copy", "Duplicate", "copy")
+    ]),
+    G("table-align", "Alignment", [
+      S("editor:table-col-align-left", "Left", "align-left"),
+      S("editor:table-col-align-center", "Center", "align-center"),
+      S("editor:table-col-align-right", "Right", "align-right")
+    ]),
+    G("table-convert", "Convert", [
+      S("editing-toolbar:list-to-table", "List to Table", "table-properties"),
+      S("editing-toolbar:table-to-list", "Table to List", "list")
+    ], "first")
+  ]),
+  T("navigate", "Navigate", [
+    G("nav-history", "History", [
+      L("app:go-back", "Back", "arrow-left"),
+      L("app:go-forward", "Forward", "arrow-right")
+    ], "last"),
+    G("nav-find", "Find", [
+      L("switcher:open", "Quick Switcher", "navigation"),
+      S("global-search:open", "Search Vault", "search"),
+      S("omnisearch:show-modal", "Omnisearch", "scan-search"),
+      S("editor:open-search", "Find in Page", "text-search")
+    ]),
+    G("nav-pages", "Pages", [
+      S(O + "prev-page", "Previous Page", "chevron-up"),
+      S(O + "next-page", "Next Page", "chevron-down"),
+      S("file-explorer:reveal-active-file", "Show in List", "locate"),
+      S(O + "prev-section", "Previous Section", "chevrons-up"),
+      S(O + "next-section", "Next Section", "chevrons-down"),
+      S("notebook-navigator:open", "Navigator", "compass")
+    ]),
+    G("nav-tabs", "Tabs", [
+      S("workspace:previous-tab", "Previous Tab", "arrow-left"),
+      S("workspace:next-tab", "Next Tab", "arrow-right"),
+      S("workspace:new-tab", "New Tab", "plus"),
+      S("workspace:close", "Close Tab", "x"),
+      S("workspace:undo-close-pane", "Reopen Tab", "undo-2"),
+      S("workspace:close-others", "Close Others", "copy-x")
+    ]),
+    G("nav-daily", "Daily Notes", [
+      L("daily-notes", "Today", "calendar-days"),
+      S("daily-notes:goto-prev", "Previous Day", "calendar-minus"),
+      S("daily-notes:goto-next", "Next Day", "calendar-plus")
+    ]),
+    G("nav-links", "Links", [
+      S("editor:follow-link", "Follow Link", "link"),
+      S("editor:open-link-in-new-split", "Open to the Right", "columns-2"),
+      S("bookmarks:open", "Bookmarks", "bookmark")
+    ], "first")
+  ]),
+  T("templates", "Templates", [
+    G("tpl-templates", "Templates", [
+      L("insert-template", "Insert Template", "layout-template"),
+      S("insert-current-date", "Insert Date", "calendar-days"),
+      S("insert-current-time", "Insert Time", "clock"),
+      S("notebook-navigator:new-note-from-template", "Note from Template", "file-plus-2")
+    ]),
+    G("tpl-new", "New", [
+      L(O + "new-page", "New Page", "file-plus"),
+      S("file-explorer:new-file", "New Note", "file"),
+      S(O + "new-section", "New Section", "folder-plus"),
+      S(O + "new-notebook", "New Notebook", "book-plus")
+    ]),
+    G("tpl-properties", "Properties", [
+      S("markdown:add-metadata-property", "Add Property", "plus-circle"),
+      S("markdown:add-alias", "Add Alias", "forward"),
+      S("properties:open-local", "File Properties", "info")
+    ])
+  ]),
+  T("canvas", "Canvas", [
+    G("canvas-canvas", "Canvas", [
+      L("canvas:new-file", "New Canvas", "layout-dashboard"),
+      S(O + "new-canvas-page", "Canvas Page", "file-plus"),
+      S("canvas:jump-to-group", "Jump to Group", "move"),
+      S("canvas:convert-to-file", "Convert to File", "file-input"),
+      S("canvas:export-as-image", "Export Image", "image")
+    ]),
+    G("canvas-excalidraw", "Excalidraw", [
+      L("obsidian-excalidraw-plugin:excalidraw-autocreate", "New Drawing", "pencil-ruler"),
+      S("obsidian-excalidraw-plugin:excalidraw-autocreate-and-embed", "Embed Drawing", "image-plus"),
+      S("obsidian-excalidraw-plugin:excalidraw-open", "Open Drawing", "folder-open"),
+      S("obsidian-excalidraw-plugin:toggle-excalidraw-view", "Drawing / Text", "repeat")
+    ]),
+    G("canvas-graph", "Graph", [
+      L("graph:open", "Graph View", "git-fork"),
+      S("graph:open-local", "Local Graph", "git-branch")
+    ])
+  ]),
+  T("references", "References", [
+    G("ref-links", "Links", [
+      L("editor:insert-link", "Link", "link"),
+      S("editor:insert-wikilink", "Page Link", "file-symlink"),
+      S("editor:insert-embed", "Embed", "file-input"),
+      S("editor:insert-footnote", "Footnote", "file-signature")
+    ]),
+    G("ref-backlinks", "Linked Pages", [
+      L("backlink:open-backlinks", "Backlinks", "links-coming-in"),
+      S("outgoing-links:open-for-current", "Outgoing Links", "links-going-out"),
+      S("backlink:toggle-backlinks-in-document", "Show in Page", "file-text"),
+      S("graph:open-local", "Local Graph", "git-branch")
+    ]),
+    G("ref-tags", "Tags", [
+      S("editor:insert-tag", "Add Tag", "tag"),
+      S("tag-pane:open", "All Tags", "tags")
+    ]),
+    G("ref-bookmarks", "Bookmarks", [
+      S("bookmarks:bookmark-current-view", "Bookmark", "bookmark-plus"),
+      S("bookmarks:bookmark-current-heading", "Bookmark Heading", "heading"),
+      S("bookmarks:open", "All Bookmarks", "bookmark")
+    ]),
+    G("ref-copy", "Copy", [
+      S("workspace:copy-path", "Copy Path", "copy"),
+      S("workspace:copy-url", "Copy Link", "link-2")
+    ], "first")
+  ]),
+  T("review", "Review", [
+    G("review-proofing", "Proofing", [
+      L("editor:toggle-spellcheck", "Spelling", "spell-check")
+    ]),
+    G("review-find", "Find", [
+      S("editor:open-search", "Find", "search"),
+      S("editor:open-search-replace", "Replace", "replace"),
+      S("global-search:open", "Search Vault", "folder-search")
+    ]),
+    G("review-comments", "Comments", [
+      L("editor:toggle-comments", "Comment", "message-square-dashed")
+    ]),
+    G("review-tasks", "Tags and Tasks", [
+      L(O + "find-tags", "Tags Summary", "search-check"),
+      S("obsidian-tasks-plugin:toggle-done", "Toggle Done", "check-circle"),
+      S("obsidian-tasks-plugin:edit-task", "Edit Task", "pencil"),
+      S(O + "remove-tags", "Remove Tags", "eraser")
+    ]),
+    G("review-cleanup", "Clean Up", [
+      S("editing-toolbar:remove-whitespace-trim", "Trim Line Ends", "align-left"),
+      S("editing-toolbar:remove-blank-lines", "Remove Blank Lines", "fold-vertical"),
+      S("editing-toolbar:dedupe-lines", "Remove Duplicates", "list-x")
+    ], "first"),
+    G("review-history", "History", [
+      L("file-recovery:open", "Local History", "history"),
+      S("workspace:show-trash", "Deleted Files", "trash-2"),
+      S("workspace:undo-close-pane", "Reopen Tab", "undo-2")
+    ])
+  ]),
+  T("data", "Data", [
+    G("data-bases", "Bases", [
+      L("bases:new-file", "New Base", "layout-list"),
+      S("bases:insert", "Insert Base", "between-horizontal-start"),
+      S("bases:add-view", "Add View", "shapes"),
+      S("bases:add-item", "Add Item", "plus"),
+      S("bases:change-view", "Change View", "arrow-left-right"),
+      S("bases:copy-table", "Copy Table", "copy")
+    ]),
+    G("data-properties", "Properties", [
+      L("properties:open-local", "File Properties", "info"),
+      S("markdown:add-metadata-property", "Add Property", "plus-circle"),
+      S("properties:open", "All Properties", "archive"),
+      S("markdown:add-alias", "Add Alias", "forward")
+    ]),
+    G("data-tasks", "Tasks", [
+      S("obsidian-tasks-plugin:edit-task", "Create / Edit Task", "pencil"),
+      S("obsidian-tasks-plugin:toggle-done", "Toggle Done", "check-circle"),
+      S(O + "find-tags", "Tags Summary", "search-check")
+    ]),
+    G("data-convert", "Convert", [
+      S("editing-toolbar:list-to-table", "List to Table", "table-properties"),
+      S("editing-toolbar:table-to-list", "Table to List", "list")
+    ], "first")
+  ]),
+  T("slides", "Slides", [
+    G("slides-show", "Slide Show", [
+      L("slides:start", "Start Presentation", "presentation")
+    ]),
+    G("slides-edit", "Slides", [
+      S("editor:insert-horizontal-rule", "Slide Break", "minus"),
+      S("markdown:toggle-preview", "Read / Edit", "book-open"),
+      S(O + "full-page-view", "Full Page", "maximize-2")
+    ]),
+    G("slides-export", "Export", [
+      L("workspace:export-pdf", "Export to PDF", "file-down")
+    ])
+  ]),
+  T("utilities", "Utilities", [
+    G("util-obsidian", "Obsidian", [
+      L("app:open-settings", "Settings", "settings"),
+      L("command-palette:open", "Command Palette", "terminal-square"),
+      S(O + "open-community-plugins", "Plugins", "puzzle"),
+      S(O + "open-ai-chatbridge-settings", "ChatBridge", "message-square-text"),
+      S("app:open-help", "Help", "help-circle")
+    ], "last"),
+    G("util-file", "File", [
+      S("workspace:edit-file-title", "Rename", "pencil"),
+      S("file-explorer:move-file", "Move", "folder-input"),
+      S("file-explorer:duplicate-file", "Duplicate", "files"),
+      S("workspace:export-pdf", "Export PDF", "file-down"),
+      S("open-with-default-app:show", "Show in Explorer", "folder-open"),
+      S("open-with-default-app:open", "Open in App", "arrow-up-right")
+    ]),
+    G("util-text", "Text Tools", [
+      S("editing-toolbar:merge-lines", "Merge Lines", "fold-vertical"),
+      S("editing-toolbar:split-lines", "Split Lines", "unfold-vertical"),
+      S("editing-toolbar:number-lines", "Number Lines", "list-ordered"),
+      S("editing-toolbar:get-plain-text", "Plain Text", "type"),
+      S("editing-toolbar:toggle-format-brush", "Format Brush", "paintbrush"),
+      S("editing-toolbar:toggle-top-toolbar", "Editing Toolbar", "panel-top")
+    ]),
+    G("util-ribbon", "Ribbon", [
+      S(O + "ribbon-export", "Export Layout", "download"),
+      S(O + "ribbon-import", "Import Layout", "upload"),
+      S(O + "ribbon-reset", "Reset Ribbon", "rotate-ccw")
+    ], "first")
+  ])
+];
+function defaultLayout() {
+  return normalizeLayout({ tabs: JSON.parse(JSON.stringify(TABS)) });
+}
+
+// src/main.js
 var NOTEBOOKS_VIEW = "onenote-notebooks";
 var PAGES_VIEW = "onenote-pages";
 var DRAG_TYPE = "text/x-onenote-page";
@@ -88,18 +1653,6 @@ var BRAND_ICONS = {
   "onenote-ai-lumo": '<g transform="scale(1.5625)" fill="currentColor" stroke="none"><path d="M42.4499 12.1097L49.6457 7.48831C52.1406 5.8859 55.4516 7.43191 55.8298 10.3713L57.5715 23.9337L42.4465 12.1097H42.4499Z"/><path d="M22.9165 12.1097L15.7206 7.48831C13.2257 5.8859 9.91475 7.43191 9.53654 10.3713L7.7948 23.9337L22.9198 12.1097H22.9165Z"/><path d="M46.5833 39.8431C48.3991 39.8431 49.871 37.4443 49.871 34.4852C49.871 31.5261 48.3991 29.1273 46.5833 29.1273C44.7675 29.1273 43.2955 31.5261 43.2955 34.4852C43.2955 37.4443 44.7675 39.8431 46.5833 39.8431Z"/><path d="M18.7383 40.2558C20.5541 40.2558 22.0261 37.857 22.0261 34.8979C22.0261 31.9387 20.5541 29.5399 18.7383 29.5399C16.9225 29.5399 15.4506 31.9387 15.4506 34.8979C15.4506 37.857 16.9225 40.2558 18.7383 40.2558Z"/><path fill-rule="evenodd" d="M62.5401 38.1462C62.5401 51.9873 46.1147 56.9206 32.413 56.9206C20.37 56.9206 2.28577 51.9873 2.28577 38.1462C2.28577 24.3052 15.7752 10.3148 32.413 10.3148C49.0508 10.3148 62.5401 24.3052 62.5401 38.1462Z M47.1845 42.6603C52.1662 40.5117 54.6588 35.1856 52.7519 30.7641C50.845 26.3426 45.2606 24.5 40.2788 26.6486C35.2971 28.7972 32.8044 34.1233 34.7114 38.5448C36.6183 42.9663 42.2027 44.8088 47.1845 42.6603Z M24.7442 38.542C26.6511 34.1205 24.1585 28.7944 19.1768 26.6458C14.195 24.4973 8.61062 26.3398 6.70368 30.7613C4.79674 35.1828 7.28936 40.5089 12.2711 42.6575C17.2529 44.8061 22.8373 42.9635 24.7442 38.542Z"/></g>'
 };
 var AI_PLUGIN = "ai-chatbridge";
-var AI_SYNC_ALL = { id: "all", label: "Sync All", tip: "Sync all your AI chats into the vault", command: "sync-all-chats" };
-var AI_SURFACES = [
-  [
-    { id: "claude", label: "Claude", icon: "onenote-ai-claude", tip: "Sync your claude.ai chats", command: "sync-claude-chats" },
-    { id: "chatgpt", label: "ChatGPT", icon: "onenote-ai-openai", tip: "Sync your ChatGPT chats", command: "sync-chatgpt-chats" },
-    { id: "lumo", label: "Lumo", icon: "onenote-ai-lumo", tip: "Sync your Proton Lumo chats", command: "sync-lumo-chats" }
-  ],
-  [
-    { id: "claude-desktop", label: "Claude Desktop", icon: "onenote-ai-claude", tip: "Sync the Claude desktop app and Claude Code", command: "sync-desktop-app-chats", desktop: "claude" },
-    { id: "codex", label: "Codex", icon: "onenote-ai-codex", tip: "Sync the ChatGPT desktop app and Codex", command: "sync-desktop-app-chats", desktop: "chatgpt" }
-  ]
-];
 var TAGS = [
   { id: "todo", name: "To Do", char: " ", icon: "check-square", key: "1" },
   { id: "important", name: "Important", char: "!", icon: "star", key: "2" },
@@ -205,7 +1758,7 @@ var DEFAULT_STATE = {
 var MAP_KEYS = ["colors", "order", "levels", "lastPage", "lastSection", "expanded"];
 var TASK_RE = /^(\s*)(?:((?:[-*+]|\d+[.)])\s+)(?:\[(.)\]\s?)?)?(.*)$/;
 function icon(el, name, fallback) {
-  (0, import_obsidian.setIcon)(el, name);
+  (0, import_obsidian3.setIcon)(el, name);
   if (!el.querySelector("svg")) el.setText(fallback || "\u2022");
 }
 function byName(a, b) {
@@ -218,7 +1771,7 @@ function isInside(folder, child) {
   return child.path.startsWith(folder.path + "/");
 }
 function isPageFile(f) {
-  return f instanceof import_obsidian.TFile && (f.extension === "md" || f.extension === "canvas");
+  return f instanceof import_obsidian3.TFile && (f.extension === "md" || f.extension === "canvas");
 }
 function mapLines(editor, fn) {
   const from = editor.getCursor("from");
@@ -303,7 +1856,7 @@ function tableMarkdown(rows, cols) {
   const row = "|" + "     |".repeat(cols);
   return [head, sep].concat(Array(Math.max(1, rows - 1)).fill(row)).join("\n");
 }
-var PromptModal = class extends import_obsidian.Modal {
+var PromptModal = class extends import_obsidian3.Modal {
   constructor(app, title, value, cta, resolve) {
     super(app);
     this.titleText = title;
@@ -345,7 +1898,7 @@ var PromptModal = class extends import_obsidian.Modal {
 function promptText(app, title, value, cta) {
   return new Promise((resolve) => new PromptModal(app, title, value, cta, resolve).open());
 }
-var ConfirmModal = class extends import_obsidian.Modal {
+var ConfirmModal = class extends import_obsidian3.Modal {
   constructor(app, title, message, cta, resolve) {
     super(app);
     Object.assign(this, { titleText: title, message, cta, resolve, done: false });
@@ -369,7 +1922,7 @@ var ConfirmModal = class extends import_obsidian.Modal {
 function confirmAction(app, title, message, cta) {
   return new Promise((resolve) => new ConfirmModal(app, title, message, cta || "Delete", resolve).open());
 }
-var SectionSuggestModal = class extends import_obsidian.FuzzySuggestModal {
+var SectionSuggestModal = class extends import_obsidian3.FuzzySuggestModal {
   constructor(app, plugin, onChoose) {
     super(app);
     this.plugin = plugin;
@@ -386,7 +1939,7 @@ var SectionSuggestModal = class extends import_obsidian.FuzzySuggestModal {
     this.onChoose(f);
   }
 };
-var PageSuggestModal = class extends import_obsidian.FuzzySuggestModal {
+var PageSuggestModal = class extends import_obsidian3.FuzzySuggestModal {
   constructor(app, items, placeholder, onChoose) {
     super(app);
     this.items = items;
@@ -397,13 +1950,13 @@ var PageSuggestModal = class extends import_obsidian.FuzzySuggestModal {
     return this.items;
   }
   getItemText(f) {
-    return f instanceof import_obsidian.TFolder ? f.name : f.basename;
+    return f instanceof import_obsidian3.TFolder ? f.name : f.basename;
   }
   onChooseItem(f) {
     this.onChoose(f);
   }
 };
-var TagSummaryModal = class extends import_obsidian.Modal {
+var TagSummaryModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -414,11 +1967,11 @@ var TagSummaryModal = class extends import_obsidian.Modal {
     this.modalEl.addClass("onenote-tags-modal");
     this.titleEl.setText("Tags Summary");
     const bar = this.contentEl.createDiv("onenote-tags-toolbar");
-    new import_obsidian.Setting(bar).setName("Search").addDropdown((d) => d.addOption("notebook", "This notebook").addOption("section", "This section").addOption("all", "All notebooks").setValue(this.scope).onChange((v) => {
+    new import_obsidian3.Setting(bar).setName("Search").addDropdown((d) => d.addOption("notebook", "This notebook").addOption("section", "This section").addOption("all", "All notebooks").setValue(this.scope).onChange((v) => {
       this.scope = v;
       this.load();
     }));
-    new import_obsidian.Setting(bar).setName("Hide completed To Do items").addToggle((t) => t.setValue(this.hideDone).onChange((v) => {
+    new import_obsidian3.Setting(bar).setName("Hide completed To Do items").addToggle((t) => t.setValue(this.hideDone).onChange((v) => {
       this.hideDone = v;
       this.load();
     }));
@@ -471,7 +2024,7 @@ var TagSummaryModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
-var NotebooksView = class extends import_obsidian.ItemView {
+var NotebooksView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -556,7 +2109,7 @@ var NotebooksView = class extends import_obsidian.ItemView {
     p.makeDropTarget(row, folder);
   }
 };
-var PagesView = class extends import_obsidian.ItemView {
+var PagesView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -589,7 +2142,7 @@ var PagesView = class extends import_obsidian.ItemView {
     const addMore = addRow.createDiv({ cls: "onenote-add-page-more", attr: { "aria-label": "More page types" } });
     icon(addMore, "chevron-down", "\u25BE");
     addMore.onclick = (e) => {
-      const m = new import_obsidian.Menu();
+      const m = new import_obsidian3.Menu();
       m.addItem((i) => i.setTitle("Page").setIcon("file-plus").onClick(() => p.createPage()));
       m.addItem((i) => i.setTitle("Subpage").setIcon("indent").onClick(() => p.createSubpage()));
       m.addItem((i) => i.setTitle("Free-form page (Canvas)").setIcon("layout-dashboard").onClick(() => p.createPage({ canvas: true })));
@@ -612,7 +2165,7 @@ var PagesView = class extends import_obsidian.ItemView {
       });
       if (file.extension === "canvas") icon(item.createSpan("onenote-page-kind"), "layout-dashboard", "\u25A6");
       item.createSpan({ cls: "onenote-page-name", text: file.basename });
-      item.setAttr("aria-label", (0, import_obsidian.moment)(file.stat.ctime).format(p.settings.dateFormat + "  " + p.settings.timeFormat));
+      item.setAttr("aria-label", (0, import_obsidian3.moment)(file.stat.ctime).format(p.settings.dateFormat + "  " + p.settings.timeFormat));
       item.setAttr("data-tooltip-position", "left");
       item.onclick = (e) => p.openPage(file, e.ctrlKey || e.metaKey);
       item.onauxclick = (e) => {
@@ -650,7 +2203,7 @@ var PagesView = class extends import_obsidian.ItemView {
     }
   }
 };
-var OneNoteSettingTab = class extends import_obsidian.PluginSettingTab {
+var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -667,73 +2220,73 @@ var OneNoteSettingTab = class extends import_obsidian.PluginSettingTab {
       p.refresh();
     };
     el.createEl("h3", { text: "Notebooks" });
-    new import_obsidian.Setting(el).setName("Notebook structure").setDesc("How vault folders map to OneNote notebooks and sections.").addDropdown((d) => d.addOption("folders", "Top-level folders are notebooks, subfolders are sections").addOption("vault", "The vault is one notebook, folders are sections").setValue(s.notebookMode).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Notebook structure").setDesc("How vault folders map to OneNote notebooks and sections.").addDropdown((d) => d.addOption("folders", "Top-level folders are notebooks, subfolders are sections").addOption("vault", "The vault is one notebook, folders are sections").setValue(s.notebookMode).onChange(async (v) => {
       s.notebookMode = v;
       await changed();
       this.display();
     }));
-    new import_obsidian.Setting(el).setName("Excluded folders").setDesc("Comma-separated folder paths to hide from notebooks and sections (e.g. attachments, templates).").addText((t) => t.setValue(s.excludedFolders).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Excluded folders").setDesc("Comma-separated folder paths to hide from notebooks and sections (e.g. attachments, templates).").addText((t) => t.setValue(s.excludedFolders).onChange(async (v) => {
       s.excludedFolders = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Own notebook and page panes").setDesc("Off: Fluent OneNote and Notebook Navigator handle navigation, and this plugin only provides the ribbon and tags.").addToggle((t) => t.setValue(s.showNavigation).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Own notebook and page panes").setDesc("Off: Fluent OneNote and Notebook Navigator handle navigation, and this plugin only provides the ribbon and tags.").addToggle((t) => t.setValue(s.showNavigation).onChange(async (v) => {
       s.showNavigation = v;
       await p.persist();
       await p.activatePanes(v);
     }));
-    new import_obsidian.Setting(el).setName("Page list position").setDesc("OneNote 2016 shows pages on the right; newer OneNote shows them on the left under the notebooks.").addDropdown((d) => d.addOption("docked", "Docked under the file list (always visible)").addOption("right", "Right sidebar").addOption("left", "Left sidebar, below notebooks").setValue(s.pagesPanePosition).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Page list position").setDesc("OneNote 2016 shows pages on the right; newer OneNote shows them on the left under the notebooks.").addDropdown((d) => d.addOption("docked", "Docked under the file list (always visible)").addOption("right", "Right sidebar").addOption("left", "Left sidebar, below notebooks").setValue(s.pagesPanePosition).onChange(async (v) => {
       s.pagesPanePosition = v;
       await p.persist();
       await p.activatePanes(true);
     })).addButton((b) => b.setButtonText("Reset panes").onClick(() => p.resetPanes()));
     el.createEl("h3", { text: "Look" });
-    new import_obsidian.Setting(el).setName("OneNote theme").setDesc("Purple accents, Segoe UI, OneNote-style page title and tag icons.").addToggle((t) => t.setValue(s.applyTheme).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("OneNote theme").setDesc("Purple accents, Segoe UI, OneNote-style page title and tag icons.").addToggle((t) => t.setValue(s.applyTheme).onChange(async (v) => {
       s.applyTheme = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Show ribbon").setDesc("Home / Insert / View toolbar across the top.").addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Show ribbon").setDesc("Home / Insert / View toolbar across the top.").addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => {
       s.showRibbon = v;
       await changed(true);
     }));
-    new import_obsidian.Setting(el).setName("Show section tabs").setDesc("Colored section tabs above the page.").addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Show section tabs").setDesc("Colored section tabs above the page.").addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => {
       s.showSectionTabs = v;
       await changed(true);
     }));
-    new import_obsidian.Setting(el).setName("Show page date and time").setDesc('Shown under the page title. Requires "Show inline title" in Appearance settings. Uses the "created" property when present.').addToggle((t) => t.setValue(s.showPageDate).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Show page date and time").setDesc('Shown under the page title. Requires "Show inline title" in Appearance settings. Uses the "created" property when present.').addToggle((t) => t.setValue(s.showPageDate).onChange(async (v) => {
       s.showPageDate = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Hide Obsidian's left ribbon").addToggle((t) => t.setValue(s.hideObsidianRibbon).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Hide Obsidian's left ribbon").addToggle((t) => t.setValue(s.hideObsidianRibbon).onChange(async (v) => {
       s.hideObsidianRibbon = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Page font").setDesc("CSS font-family for page text. OneNote uses Calibri.").addText((t) => t.setValue(s.pageFont).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Page font").setDesc("CSS font-family for page text. OneNote uses Calibri.").addText((t) => t.setValue(s.pageFont).onChange(async (v) => {
       s.pageFont = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Interface font").addText((t) => t.setValue(s.uiFont).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Interface font").addText((t) => t.setValue(s.uiFont).onChange(async (v) => {
       s.uiFont = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Page font size").setDesc("In pixels. 0 uses Obsidian's own font size.").addSlider((sl) => sl.setLimits(0, 24, 1).setValue(s.fontSize).setDynamicTooltip().onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Page font size").setDesc("In pixels. 0 uses Obsidian's own font size.").addSlider((sl) => sl.setLimits(0, 24, 1).setValue(s.fontSize).setDynamicTooltip().onChange(async (v) => {
       s.fontSize = v;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Rule lines").addDropdown((d) => {
+    new import_obsidian3.Setting(el).setName("Rule lines").addDropdown((d) => {
       RULE_LINES.forEach((r) => d.addOption(r.id, r.name));
       d.setValue(s.ruleLines).onChange(async (v) => {
         s.ruleLines = v;
         await changed();
       });
     });
-    new import_obsidian.Setting(el).setName("Page color").addDropdown((d) => {
+    new import_obsidian3.Setting(el).setName("Page color").addDropdown((d) => {
       PAGE_COLORS.forEach((c) => d.addOption(c.value, c.name));
       d.setValue(s.pageColor).onChange(async (v) => {
         s.pageColor = v;
         await changed();
       });
     });
-    new import_obsidian.Setting(el).setName("Page width").addDropdown((d) => {
+    new import_obsidian3.Setting(el).setName("Page width").addDropdown((d) => {
       PAGE_WIDTHS.forEach((w) => d.addOption(w.id, w.name));
       d.setValue(s.pageWidth).onChange(async (v) => {
         s.pageWidth = v;
@@ -741,32 +2294,42 @@ var OneNoteSettingTab = class extends import_obsidian.PluginSettingTab {
       });
     });
     el.createEl("h3", { text: "Pages" });
-    new import_obsidian.Setting(el).setName("New page name").addText((t) => t.setValue(s.newPageName).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("New page name").addText((t) => t.setValue(s.newPageName).onChange(async (v) => {
       s.newPageName = v.trim() || "Untitled Page";
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Date format").setDesc("Moment.js format for the page date and Insert \u203A Date.").addMomentFormat((m) => m.setValue(s.dateFormat).setDefaultFormat(DEFAULT_SETTINGS.dateFormat).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Date format").setDesc("Moment.js format for the page date and Insert \u203A Date.").addMomentFormat((m) => m.setValue(s.dateFormat).setDefaultFormat(DEFAULT_SETTINGS.dateFormat).onChange(async (v) => {
       s.dateFormat = v || DEFAULT_SETTINGS.dateFormat;
       await changed();
     }));
-    new import_obsidian.Setting(el).setName("Time format").addMomentFormat((m) => m.setValue(s.timeFormat).setDefaultFormat(DEFAULT_SETTINGS.timeFormat).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Time format").addMomentFormat((m) => m.setValue(s.timeFormat).setDefaultFormat(DEFAULT_SETTINGS.timeFormat).onChange(async (v) => {
       s.timeFormat = v || DEFAULT_SETTINGS.timeFormat;
       await changed();
     }));
+    el.createEl("h3", { text: "Ribbon layout" });
+    el.createEl("p", {
+      cls: "setting-item-description",
+      text: "You customise the ribbon on the ribbon itself: right-click a button, a group, a tab or an empty area, or drag buttons between groups. The buttons below are only a backup."
+    });
+    new import_obsidian3.Setting(el).setName("Export or import").setDesc("Export saves the whole layout as one JSON file in your vault. Import replaces the current layout with a file you choose.").addButton((b) => b.setButtonText("Export").onClick(() => p.exportRibbon())).addButton((b) => b.setButtonText("Import").onClick(() => p.importRibbon()));
+    new import_obsidian3.Setting(el).setName("Reset").setDesc("Go back to the default tabs, groups and buttons.").addButton((b) => b.setButtonText("Undo last import or reset").onClick(() => p.undoRibbonReplace())).addButton((b) => b.setButtonText("Reset to default").setWarning().onClick(() => p.resetRibbon()));
   }
 };
-var OneNotePlugin = class extends import_obsidian.Plugin {
+var OneNotePlugin = class extends import_obsidian3.Plugin {
   async onload() {
-    for (const name of Object.keys(BRAND_ICONS)) (0, import_obsidian.addIcon)(name, BRAND_ICONS[name]);
-    this.registerInterval(window.setInterval(() => this.updateAiState(), 500));
+    for (const name of Object.keys(BRAND_ICONS)) (0, import_obsidian3.addIcon)(name, BRAND_ICONS[name]);
     const data = await this.loadData() || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
     this.state = Object.assign({}, DEFAULT_STATE, data.state);
     for (const k of MAP_KEYS) this.state[k] = Object.assign({}, this.state[k]);
+    this.ribbonLayout = this.loadRibbonLayout(data.ribbon);
+    this.ribbonPrevious = data.ribbonPrevious || null;
+    this.ribbon = new RibbonView(this);
+    this.registerInterval(window.setInterval(() => this.ribbon.tick(), 1500));
     this.lastMarkdownView = null;
     this.popover = null;
-    this.requestRefresh = (0, import_obsidian.debounce)(() => this.refresh(), 60, true);
-    this.save = (0, import_obsidian.debounce)(() => this.persist(), 400, true);
+    this.requestRefresh = (0, import_obsidian3.debounce)(() => this.refresh(), 60, true);
+    this.save = (0, import_obsidian3.debounce)(() => this.persist(), 400, true);
     this.registerView(NOTEBOOKS_VIEW, (leaf) => new NotebooksView(leaf, this));
     this.registerView(PAGES_VIEW, (leaf) => new PagesView(leaf, this));
     this.addSettingTab(new OneNoteSettingTab(this.app, this));
@@ -781,12 +2344,13 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
       this.registerEvent(vault.on("rename", (file, oldPath) => this.onRename(file, oldPath)));
       this.registerEvent(workspace.on("file-open", (file) => this.onFileOpen(file)));
       this.registerEvent(workspace.on("active-leaf-change", (leaf) => {
-        if (leaf && leaf.view instanceof import_obsidian.MarkdownView) this.lastMarkdownView = leaf.view;
+        if (leaf && leaf.view instanceof import_obsidian3.MarkdownView) this.lastMarkdownView = leaf.view;
         this.decoratePageHeaders();
       }));
       this.registerEvent(workspace.on("layout-change", () => this.decoratePageHeaders()));
+      this.registerEvent(workspace.on("css-change", () => this.ribbon.remeasure()));
       this.registerEvent(metadataCache.on("changed", () => this.decoratePageHeaders()));
-      const mv = workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+      const mv = workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
       if (mv) this.lastMarkdownView = mv;
       if (!this.state.navHandedOff) {
         this.settings.showNavigation = false;
@@ -812,6 +2376,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   onunload() {
     this.closePopover();
+    if (this.ribbon) this.ribbon.unmount();
     if (this.topBar) this.topBar.remove();
     const b = document.body;
     for (const c of Array.from(b.classList)) if (c.startsWith("onenote-")) b.removeClass(c);
@@ -821,7 +2386,21 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     document.querySelectorAll(".onenote-page-date").forEach((e) => e.remove());
   }
   async persist() {
-    await this.saveData({ settings: this.settings, state: this.state });
+    const data = { settings: this.settings, state: this.state, ribbon: this.ribbonLayout };
+    if (this.ribbonPrevious) data.ribbonPrevious = this.ribbonPrevious;
+    await this.saveData(data);
+  }
+  // The saved ribbon layout, or the default one if nothing usable was saved.
+  loadRibbonLayout(saved) {
+    if (saved) {
+      try {
+        const layout = normalizeLayout(saved);
+        if (layout.tabs.length) return layout;
+      } catch (e) {
+        console.error("OneNote Style: saved ribbon layout is unreadable, using the default", e);
+      }
+    }
+    return defaultLayout();
   }
   /* ---------- structure ---------- */
   get root() {
@@ -829,11 +2408,11 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   isExcluded(folder) {
     if (folder.name.startsWith(".")) return true;
-    const ex = this.settings.excludedFolders.split(",").map((x) => (0, import_obsidian.normalizePath)(x.trim())).filter((x) => x && x !== "/");
+    const ex = this.settings.excludedFolders.split(",").map((x) => (0, import_obsidian3.normalizePath)(x.trim())).filter((x) => x && x !== "/");
     return ex.some((x) => folder.path === x || folder.path.startsWith(x + "/"));
   }
   isFolder(f) {
-    return f instanceof import_obsidian.TFolder && !f.isRoot() && !this.isExcluded(f);
+    return f instanceof import_obsidian3.TFolder && !f.isRoot() && !this.isExcluded(f);
   }
   getNotebooks() {
     if (this.settings.notebookMode === "vault") return [this.root];
@@ -884,7 +2463,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     if (path == null) return null;
     if (path === "/" || path === "") return this.root;
     const f = this.app.vault.getAbstractFileByPath(path);
-    return f instanceof import_obsidian.TFolder ? f : null;
+    return f instanceof import_obsidian3.TFolder ? f : null;
   }
   notebookOf(folder) {
     if (!folder) return null;
@@ -896,7 +2475,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   locate(file) {
     if (!file) return null;
-    const section = file instanceof import_obsidian.TFolder ? file : file.parent;
+    const section = file instanceof import_obsidian3.TFolder ? file : file.parent;
     const notebook = this.notebookOf(section);
     if (!notebook || this.isExcluded(section) && !section.isRoot()) return null;
     return { notebook, section };
@@ -928,8 +2507,8 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     const clean = base.replace(/[\\/:*?"<>|#^[\]]/g, "").trim() || "Untitled";
     let name = clean;
     let n = 1;
-    while (this.app.vault.getAbstractFileByPath((0, import_obsidian.normalizePath)(dir + name + (ext ? "." + ext : "")))) name = `${clean} ${++n}`;
-    return (0, import_obsidian.normalizePath)(dir + name + (ext ? "." + ext : ""));
+    while (this.app.vault.getAbstractFileByPath((0, import_obsidian3.normalizePath)(dir + name + (ext ? "." + ext : "")))) name = `${clean} ${++n}`;
+    return (0, import_obsidian3.normalizePath)(dir + name + (ext ? "." + ext : ""));
   }
   /* ---------- navigation ---------- */
   onFileOpen(file) {
@@ -1036,7 +2615,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     return rel ? rel.split("/").length : 0;
   }
   isFolderNote(f) {
-    return f instanceof import_obsidian.TFile && f.parent && !f.parent.isRoot() && f.basename === f.parent.name;
+    return f instanceof import_obsidian3.TFile && f.parent && !f.parent.isRoot() && f.basename === f.parent.name;
   }
   /** The thing that moves when a page moves: the page folder for a parent page, else the note. */
   pageUnit(f) {
@@ -1044,23 +2623,23 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   needsSection(container) {
     if (this.depthOf(container) >= 2) return false;
-    new import_obsidian.Notice("Subpages live inside a section. Create a section in this notebook (a folder inside it) and move the page there first.", 8e3);
+    new import_obsidian3.Notice("Subpages live inside a section. Create a section in this notebook (a folder inside it) and move the page there first.", 8e3);
     return true;
   }
   /** Turn a plain page into a parent page: Section/P.md -> Section/P/P.md */
   async ensurePageFolder(page) {
     if (this.isFolderNote(page) && this.depthOf(page.parent) >= 3) return page.parent;
-    const folderPath = (0, import_obsidian.normalizePath)(page.parent.path + "/" + page.basename);
+    const folderPath = (0, import_obsidian3.normalizePath)(page.parent.path + "/" + page.basename);
     let folder = this.app.vault.getAbstractFileByPath(folderPath);
     if (!folder) folder = await this.app.vault.createFolder(folderPath);
-    if (!(folder instanceof import_obsidian.TFolder)) throw new Error("A file named " + folderPath + " is in the way.");
-    await this.app.fileManager.renameFile(page, (0, import_obsidian.normalizePath)(folderPath + "/" + page.name));
+    if (!(folder instanceof import_obsidian3.TFolder)) throw new Error("A file named " + folderPath + " is in the way.");
+    await this.app.fileManager.renameFile(page, (0, import_obsidian3.normalizePath)(folderPath + "/" + page.name));
     return folder;
   }
   async moveInto(unit, folder) {
-    const dest = (0, import_obsidian.normalizePath)(folder.path + "/" + unit.name);
+    const dest = (0, import_obsidian3.normalizePath)(folder.path + "/" + unit.name);
     if (this.app.vault.getAbstractFileByPath(dest)) {
-      new import_obsidian.Notice(`There is already a page called "${unit.name}" there.`);
+      new import_obsidian3.Notice(`There is already a page called "${unit.name}" there.`);
       return false;
     }
     await this.app.fileManager.renameFile(unit, dest);
@@ -1069,7 +2648,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   async createSubpage() {
     const cur = this.app.workspace.getActiveFile();
     if (!cur || cur.extension !== "md") {
-      new import_obsidian.Notice("Open a page first. The subpage is created under the page you are on.");
+      new import_obsidian3.Notice("Open a page first. The subpage is created under the page you are on.");
       return;
     }
     const container = this.pageUnit(cur).parent;
@@ -1085,17 +2664,17 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     const unit = this.pageUnit(file);
     const container = unit.parent;
     if (this.needsSection(container)) return;
-    const candidates = container.children.filter((c) => c !== unit && (c instanceof import_obsidian.TFolder || c instanceof import_obsidian.TFile && c.extension === "md" && c.basename !== container.name));
+    const candidates = container.children.filter((c) => c !== unit && (c instanceof import_obsidian3.TFolder || c instanceof import_obsidian3.TFile && c.extension === "md" && c.basename !== container.name));
     if (!candidates.length) {
-      new import_obsidian.Notice("There is no other page here to put it under.");
+      new import_obsidian3.Notice("There is no other page here to put it under.");
       return;
     }
     new PageSuggestModal(this.app, candidates, `Make "${file.basename}" a subpage of...`, async (parent) => {
       try {
-        const folder = parent instanceof import_obsidian.TFolder ? parent : await this.ensurePageFolder(parent);
-        if (await this.moveInto(unit, folder)) new import_obsidian.Notice(`"${file.basename}" is now a subpage of "${folder.name}".`);
+        const folder = parent instanceof import_obsidian3.TFolder ? parent : await this.ensurePageFolder(parent);
+        if (await this.moveInto(unit, folder)) new import_obsidian3.Notice(`"${file.basename}" is now a subpage of "${folder.name}".`);
       } catch (e) {
-        new import_obsidian.Notice(String(e.message || e));
+        new import_obsidian3.Notice(String(e.message || e));
       }
     }).open();
   }
@@ -1103,10 +2682,10 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     const unit = this.pageUnit(file);
     const parentFolder = unit.parent;
     if (this.depthOf(parentFolder) < 3) {
-      new import_obsidian.Notice(`"${file.basename}" is already a top-level page in its section.`);
+      new import_obsidian3.Notice(`"${file.basename}" is already a top-level page in its section.`);
       return;
     }
-    if (await this.moveInto(unit, parentFolder.parent)) new import_obsidian.Notice(`"${file.basename}" moved up one level.`);
+    if (await this.moveInto(unit, parentFolder.parent)) new import_obsidian3.Notice(`"${file.basename}" moved up one level.`);
   }
   focusTitle(leaf, file) {
     setTimeout(async () => {
@@ -1137,7 +2716,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   async createNotebook() {
     if (this.settings.notebookMode === "vault") {
-      new import_obsidian.Notice('Your vault is set up as a single notebook. Change "Notebook structure" in settings to use several.');
+      new import_obsidian3.Notice('Your vault is set up as a single notebook. Change "Notebook structure" in settings to use several.');
       return;
     }
     const name = await promptText(this.app, "New notebook", "New Notebook", "Create");
@@ -1152,7 +2731,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   async renameFile(file, name) {
     const parent = file.parent;
-    const path = this.uniquePath(parent, name, file instanceof import_obsidian.TFile ? file.extension : "");
+    const path = this.uniquePath(parent, name, file instanceof import_obsidian3.TFile ? file.extension : "");
     await this.app.fileManager.renameFile(file, path);
   }
   async deleteFile(file, what) {
@@ -1162,8 +2741,8 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     else await this.app.vault.trash(file, true);
   }
   setLevel(file, delta) {
-    if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") {
-      new import_obsidian.Notice("Subpages work with notes (not canvases or images).");
+    if (!(file instanceof import_obsidian3.TFile) || file.extension !== "md") {
+      new import_obsidian3.Notice("Subpages work with notes (not canvases or images).");
       return;
     }
     return delta > 0 ? this.makeSubpage(file) : this.promotePage(file);
@@ -1187,7 +2766,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   async dropPage(path, target, after) {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof import_obsidian.TFile) || file === target) return;
+    if (!(file instanceof import_obsidian3.TFile) || file === target) return;
     if (file.parent !== target.parent) await this.movePage(file, target.parent);
     const section = target.parent;
     const list = this.getPages(section).map((f) => f.path);
@@ -1219,7 +2798,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
       el.removeClass("is-drop-target");
       const path = e.dataTransfer.getData(DRAG_TYPE);
       const file = path && this.app.vault.getAbstractFileByPath(path);
-      if (!(file instanceof import_obsidian.TFile)) return;
+      if (!(file instanceof import_obsidian3.TFile)) return;
       e.preventDefault();
       await this.movePage(file, folder);
     });
@@ -1240,7 +2819,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   /* ---------- context menus ---------- */
   pageMenu(evt, file) {
-    const m = new import_obsidian.Menu();
+    const m = new import_obsidian3.Menu();
     m.addItem((i) => i.setTitle("Open in new tab").setIcon("file-plus").onClick(() => this.openPage(file, true)));
     m.addItem((i) => i.setTitle("Rename").setIcon("pencil").onClick(async () => {
       const name = await promptText(this.app, "Rename page", file.basename, "Rename");
@@ -1257,14 +2836,14 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     }));
     m.addItem((i) => i.setTitle("Copy link to page").setIcon("link").onClick(() => {
       navigator.clipboard.writeText(this.app.fileManager.generateMarkdownLink(file, ""));
-      new import_obsidian.Notice("Link copied");
+      new import_obsidian3.Notice("Link copied");
     }));
     m.addSeparator();
     m.addItem((i) => i.setTitle("Delete page").setIcon("trash").onClick(() => this.deleteFile(file, "page")));
     m.showAtMouseEvent(evt);
   }
   sectionMenu(evt, folder) {
-    const m = new import_obsidian.Menu();
+    const m = new import_obsidian3.Menu();
     m.addItem((i) => i.setTitle("New page").setIcon("file-plus").onClick(() => this.createPage({ section: folder })));
     m.addItem((i) => i.setTitle("New section").setIcon("folder-plus").onClick(() => this.createSection(folder.parent && !folder.parent.isRoot() ? folder.parent : this.notebookOf(folder))));
     m.addItem((i) => i.setTitle("New section inside (section group)").setIcon("folder-tree").onClick(() => this.createSection(folder)));
@@ -1279,7 +2858,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     m.showAtMouseEvent(evt);
   }
   notebookMenu(evt, nb) {
-    const m = new import_obsidian.Menu();
+    const m = new import_obsidian3.Menu();
     m.addItem((i) => i.setTitle("New section").setIcon("folder-plus").onClick(() => this.createSection(nb)));
     if (!nb.isRoot()) {
       m.addItem((i) => i.setTitle("Rename notebook").setIcon("pencil").onClick(async () => {
@@ -1331,13 +2910,12 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     this.settings[key] = value;
     await this.persist();
     this.applyAppearance();
-    this.renderRibbon();
   }
   decoratePageHeaders() {
     const show = this.settings.showPageDate;
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
-      if (!(view instanceof import_obsidian.MarkdownView)) continue;
+      if (!(view instanceof import_obsidian3.MarkdownView)) continue;
       const titles = view.containerEl.querySelectorAll(".inline-title");
       if (!show || !view.file) {
         view.containerEl.querySelectorAll(".onenote-page-date").forEach((e) => e.remove());
@@ -1345,8 +2923,8 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
       }
       const fm = (this.app.metadataCache.getFileCache(view.file) || {}).frontmatter;
       const raw = fm && (fm.created || fm.date);
-      let m = raw ? (0, import_obsidian.moment)(raw) : null;
-      if (!m || !m.isValid()) m = (0, import_obsidian.moment)(view.file.stat.ctime);
+      let m = raw ? (0, import_obsidian3.moment)(raw) : null;
+      if (!m || !m.isValid()) m = (0, import_obsidian3.moment)(view.file.stat.ctime);
       const date = m.format(this.settings.dateFormat);
       const time = m.format(this.settings.timeFormat);
       titles.forEach((t) => {
@@ -1439,7 +3017,6 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     const split = root === ws.leftSplit ? ws.leftSplit : root === ws.rightSplit ? ws.rightSplit : null;
     if (split && !split.collapsed && leaf.view.containerEl.isShown()) split.collapse();
     else ws.revealLeaf(leaf);
-    setTimeout(() => this.renderRibbon(), 50);
   }
   toggleFullPage() {
     const ws = this.app.workspace;
@@ -1455,7 +3032,6 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
       if (!prev.right) ws.rightSplit.expand();
     }
     this.renderTabRow();
-    this.renderRibbon();
   }
   /* ---------- editor actions ---------- */
   exec(id) {
@@ -1472,14 +3048,14 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
         ws.setActiveLeaf(v.leaf, { focus: true });
         ae = v;
       }
-    } else if (ae instanceof import_obsidian.MarkdownView && ws.activeLeaf !== ae.leaf) {
+    } else if (ae instanceof import_obsidian3.MarkdownView && ws.activeLeaf !== ae.leaf) {
       ws.setActiveLeaf(ae.leaf, { focus: true });
     }
     if (!ae || !ae.editor) {
-      new import_obsidian.Notice("Open a page to use this.");
+      new import_obsidian3.Notice("Open a page to use this.");
       return;
     }
-    if (ae instanceof import_obsidian.MarkdownView && ae.getMode() === "preview") {
+    if (ae instanceof import_obsidian3.MarkdownView && ae.getMode() === "preview") {
       await ae.setState(Object.assign({}, ae.getState(), { mode: "source" }), { history: false });
     }
     const editor = ae.editor;
@@ -1499,7 +3075,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     return this.withEditor(fn);
   }
   stamp(kind) {
-    const m = (0, import_obsidian.moment)();
+    const m = (0, import_obsidian3.moment)();
     const s = this.settings;
     const text = kind === "date" ? m.format(s.dateFormat) : kind === "time" ? m.format(s.timeFormat) : m.format(s.dateFormat) + " " + m.format(s.timeFormat);
     return this.edit((e) => e.replaceSelection(text));
@@ -1555,11 +3131,37 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     this.addCommand({ id: "toggle-ribbon", name: "Collapse or expand the ribbon", callback: () => this.toggleRibbon(), hotkeys: key(["Mod"], "F1") });
     this.addCommand({ id: "full-page-view", name: "Toggle full page view", callback: () => this.toggleFullPage() });
     this.addCommand({ id: "show-panes", name: "Show notebooks and pages panes", callback: () => this.activatePanes(true) });
+    const run = (id, name, callback) => this.addCommand({ id, name, callback });
+    run("paste", "Paste", () => this.paste());
+    run("cut", "Cut", () => this.copy(true));
+    run("copy", "Copy", () => this.copy(false));
+    run("undo", "Undo", () => this.edit((e) => e.undo()));
+    run("redo", "Redo", () => this.edit((e) => e.redo()));
+    run("highlight-color", "Highlight color...", () => this.highlightPicker(this.pickerAnchor()));
+    run("font-color", "Font color...", () => this.fontColorPicker(this.pickerAnchor()));
+    run("insert-table-grid", "Insert table (choose size)...", () => this.tablePicker(this.pickerAnchor()));
+    run("insert-symbol", "Insert symbol...", () => this.symbolPicker(this.pickerAnchor()));
+    run("page-color", "Page color...", () => this.pageColorPicker(this.pickerAnchor()));
+    run("rule-lines", "Rule lines...", () => this.choiceMenu(RULE_LINES, "ruleLines"));
+    run("page-width", "Page width...", () => this.choiceMenu(PAGE_WIDTHS, "pageWidth"));
+    run("use-light-mode", "Use light mode", () => setDarkMode(this.app, false, document));
+    run("use-dark-mode", "Use dark mode", () => setDarkMode(this.app, true, document));
+    run("open-community-plugins", "Open Community plugins", () => openSettings(this.app, "community-plugins"));
+    run("open-ai-chatbridge-settings", "Open AI ChatBridge settings", () => this.openAiSettings());
+    run("toggle-section-tabs", "Show or hide section tabs", async () => {
+      this.settings.showSectionTabs = !this.settings.showSectionTabs;
+      await this.persist();
+      this.buildTopBar();
+    });
+    run("ribbon-export", "Ribbon: export layout to a file", () => this.exportRibbon());
+    run("ribbon-import", "Ribbon: import layout from a file", () => this.importRibbon());
+    run("ribbon-reset", "Ribbon: reset to the default layout", () => this.resetRibbon());
+    run("ribbon-undo-replace", "Ribbon: undo last import or reset", () => this.undoRibbonReplace());
   }
   withActivePage(fn) {
     const f = this.app.workspace.getActiveFile();
     if (f && (isPageFile(f) || f.extension === "md")) fn(f);
-    else new import_obsidian.Notice("Open a page first.");
+    else new import_obsidian3.Notice("Open a page first.");
   }
   clearFormat(e) {
     if (e.getSelection()) e.replaceSelection(clearFormatting(e.getSelection()));
@@ -1567,62 +3169,61 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
   }
   /* ---------- top bar: tab row, ribbon, section tabs ---------- */
   buildTopBar() {
+    if (this.ribbon) this.ribbon.unmount();
     if (this.topBar) this.topBar.remove();
     this.topBar = null;
-    const container = document.body.querySelector(".app-container");
-    const main = container && container.querySelector(":scope > .horizontal-main-container");
+    const at = mountPoint(document);
     const s = this.settings;
-    document.body.toggleClass("onenote-has-topbar", !!main && (s.showRibbon || s.showSectionTabs));
-    if (!main || !s.showRibbon && !s.showSectionTabs) return;
+    document.body.toggleClass("onenote-has-topbar", !!at && (s.showRibbon || s.showSectionTabs));
+    if (!at || !s.showRibbon && !s.showSectionTabs) return;
     const bar = createDiv("onenote-topbar");
-    container.insertBefore(bar, main);
+    at.parent.insertBefore(bar, at.before);
     this.topBar = bar;
     bar.addEventListener("mousedown", (e) => {
       if (!e.target.closest("input, select, textarea")) e.preventDefault();
     });
+    this.tabRowEl = this.qatEl = this.tabRowEndEl = this.ribbonEl = null;
     if (s.showRibbon) {
       this.tabRowEl = bar.createDiv("onenote-tabrow");
+      this.qatEl = this.tabRowEl.createDiv("onenote-qat");
+      const tabsEl = this.tabRowEl.createDiv({ cls: "onenote-tabs", attr: { role: "tablist" } });
+      this.tabRowEl.createDiv("onenote-tabrow-spacer");
+      this.tabRowEndEl = this.tabRowEl.createDiv("onenote-tabrow-end");
       this.ribbonEl = bar.createDiv("onenote-ribbon");
       this.tabRowEl.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".onenote-tab")) this.toggleRibbon();
+        if (e.target.closest(".onenote-tab[data-tab]")) this.toggleRibbon();
       });
-    } else {
-      this.tabRowEl = null;
-      this.ribbonEl = null;
+      this.renderTabRow();
+      this.ribbon.mount(bar, tabsEl, this.ribbonEl);
     }
     this.sectionTabsEl = s.showSectionTabs ? bar.createDiv("onenote-section-tabs") : null;
-    this.renderTabRow();
-    this.renderRibbon();
     this.renderSectionTabs();
   }
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;
     this.save();
-    this.renderRibbon();
+    if (this.ribbon) this.ribbon.renderBody();
   }
+  // The fixed parts of the tab row: Undo / Redo on the left, search on the right.
+  // The tabs between them are drawn by the ribbon.
   renderTabRow() {
-    const el = this.tabRowEl;
-    if (!el) return;
-    el.empty();
-    const qat = el.createDiv("onenote-qat");
-    this.button(qat, { icon: "undo", tip: "Undo (Ctrl+Z)", onClick: () => this.edit((e) => e.undo()) });
-    this.button(qat, { icon: "redo", tip: "Redo (Ctrl+Y)", onClick: () => this.edit((e) => e.redo()) });
-    const tabs = el.createDiv("onenote-tabs");
-    for (const [id, label] of [["home", "Home"], ["insert", "Insert"], ["view", "View"]]) {
-      const t = tabs.createDiv({ cls: "onenote-tab" + (this.state.ribbonTab === id ? " is-active" : ""), text: label });
-      t.onclick = () => {
-        this.state.ribbonTab = id;
-        if (this.state.ribbonCollapsed) this.state.ribbonCollapsed = false;
-        this.save();
-        this.renderTabRow();
-        this.renderRibbon();
-      };
-    }
-    el.createDiv("onenote-tabrow-spacer");
+    if (!this.qatEl) return;
+    const tool = (parent, iconName, tip, onClick, label) => {
+      const b = parent.createEl("button", { cls: "onenote-btn" + (label ? " has-label" : ""), attr: { type: "button", "aria-label": tip, "data-tooltip-position": "bottom" } });
+      icon(b.createSpan("onenote-btn-icon"), iconName, tip[0]);
+      if (label) b.createSpan({ cls: "onenote-btn-label", text: label });
+      b.onclick = onClick;
+      return b;
+    };
+    this.qatEl.empty();
+    tool(this.qatEl, "undo", "Undo (Ctrl+Z)", () => this.edit((e) => e.undo()));
+    tool(this.qatEl, "redo", "Redo (Ctrl+Y)", () => this.edit((e) => e.redo()));
+    const end = this.tabRowEndEl;
+    end.empty();
     if (document.body.hasClass("onenote-fullpage")) {
-      this.button(el, { icon: "minimize-2", label: "Exit Full Page", cls: "onenote-tabrow-btn", onClick: () => this.toggleFullPage() });
+      tool(end, "minimize-2", "Exit full page view", () => this.toggleFullPage(), "Exit Full Page");
     }
-    const search = el.createDiv("onenote-search");
+    const search = end.createDiv("onenote-search");
     icon(search.createSpan("onenote-search-icon"), "search", "\u2315");
     const input = search.createEl("input", { type: "search", attr: { placeholder: "Search (Ctrl+Shift+F)" } });
     input.addEventListener("keydown", (e) => {
@@ -1633,289 +3234,110 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
       else this.exec("global-search:open");
     });
   }
-  button(parent, o) {
-    const b = parent.createEl("button", { cls: ["onenote-btn", o.big ? "is-big" : "is-small", o.label && !o.big ? "has-label" : "", o.cls || "", o.active ? "is-active" : ""].filter(Boolean).join(" ") });
-    if (o.icon) icon(b.createSpan("onenote-btn-icon"), o.icon, o.fallback || (o.label || o.tip || "?")[0]);
-    if (o.label) b.createSpan({ cls: "onenote-btn-label", text: o.label });
-    if (o.dropdown) icon(b.createSpan("onenote-btn-caret"), "chevron-down", "\u25BE");
-    b.setAttr("aria-label", o.tip || o.label || "");
-    b.setAttr("data-tooltip-position", "bottom");
-    b.onclick = (e) => o.onClick(e, b);
-    return b;
+  /* ---------- ribbon: what the ribbon view needs from the plugin ---------- */
+  saveRibbon() {
+    this.save();
   }
-  group(parent, label, cls) {
-    const g = parent.createDiv("onenote-group" + (cls ? " " + cls : ""));
-    const body = g.createDiv("onenote-group-body");
-    g.createDiv({ cls: "onenote-group-label", text: label });
-    return body;
+  promptText(title, value, cta) {
+    return promptText(this.app, title, value, cta);
   }
-  renderRibbon() {
-    const el = this.ribbonEl;
-    if (!el) return;
-    el.empty();
-    this.aiButtons = null;
-    this.topBar.toggleClass("is-ribbon-collapsed", !!this.state.ribbonCollapsed);
-    if (this.state.ribbonCollapsed) return;
-    const tab = this.state.ribbonTab;
-    if (tab === "insert") this.renderInsertTab(el);
-    else if (tab === "view") this.renderViewTab(el);
-    else this.renderHomeTab(el);
-    const collapse = el.createDiv({ cls: "onenote-ribbon-collapse", attr: { "aria-label": "Collapse the ribbon (Ctrl+F1)" } });
-    icon(collapse, "chevron-up", "^");
-    collapse.onclick = () => this.toggleRibbon();
+  confirm(title, message, cta) {
+    return confirmAction(this.app, title, message, cta);
   }
-  renderHomeTab(el) {
-    let g = this.group(el, "Clipboard");
-    this.button(g, { icon: "clipboard-paste", label: "Paste", big: true, tip: "Paste (Ctrl+V)", onClick: () => this.paste() });
-    let col = g.createDiv("onenote-col");
-    this.button(col, { icon: "scissors", label: "Cut", tip: "Cut (Ctrl+X)", onClick: () => this.copy(true) });
-    this.button(col, { icon: "copy", label: "Copy", tip: "Copy (Ctrl+C)", onClick: () => this.copy(false) });
-    g = this.group(el, "Basic Text");
-    col = g.createDiv("onenote-col");
-    let row = col.createDiv("onenote-row");
-    this.button(row, { icon: "bold", tip: "Bold (Ctrl+B)", onClick: () => this.cmd("editor:toggle-bold", (e) => wrap(e, "**", "**")) });
-    this.button(row, { icon: "italic", tip: "Italic (Ctrl+I)", onClick: () => this.cmd("editor:toggle-italics", (e) => wrap(e, "*", "*")) });
-    this.button(row, { icon: "underline", tip: "Underline (Ctrl+U)", onClick: () => this.edit((e) => wrap(e, "<u>", "</u>")) });
-    this.button(row, { icon: "strikethrough", tip: "Strikethrough", onClick: () => this.cmd("editor:toggle-strikethrough", (e) => wrap(e, "~~", "~~")) });
-    this.button(row, { icon: "subscript", tip: "Subscript", onClick: () => this.edit((e) => wrap(e, "<sub>", "</sub>")) });
-    this.button(row, { icon: "superscript", tip: "Superscript", onClick: () => this.edit((e) => wrap(e, "<sup>", "</sup>")) });
-    row.createDiv("onenote-sep");
-    const hl = row.createDiv("onenote-split");
-    this.button(hl, { icon: "highlighter", tip: "Text Highlight Color (Ctrl+Alt+H)", cls: "onenote-hl-btn", onClick: () => this.cmd("editor:toggle-highlight", (e) => wrap(e, "==", "==")) });
-    this.button(hl, { icon: "chevron-down", tip: "Highlight colors", cls: "onenote-caret-btn", onClick: (e, b) => this.highlightPicker(b) });
-    const fc = row.createDiv("onenote-split");
-    this.button(fc, { icon: "baseline", fallback: "A", tip: "Font Color", cls: "onenote-fc-btn", onClick: () => this.edit((e) => wrap(e, '<span style="color:#C00000">', "</span>")) });
-    this.button(fc, { icon: "chevron-down", tip: "Font colors", cls: "onenote-caret-btn", onClick: (e, b) => this.fontColorPicker(b) });
-    this.button(row, { icon: "eraser", tip: "Clear All Formatting", onClick: () => this.edit((e) => this.clearFormat(e)) });
-    row = col.createDiv("onenote-row");
-    this.button(row, { icon: "list", tip: "Bullets (Ctrl+.)", onClick: () => this.cmd("editor:toggle-bullet-list") });
-    this.button(row, { icon: "list-ordered", tip: "Numbering", onClick: () => this.cmd("editor:toggle-numbered-list") });
-    this.button(row, { icon: "outdent", tip: "Decrease Indent (Shift+Tab)", onClick: () => this.edit((e) => e.exec("indentLess")) });
-    this.button(row, { icon: "indent", tip: "Increase Indent (Tab)", onClick: () => this.edit((e) => e.exec("indentMore")) });
-    this.button(row, { icon: "quote", tip: "Quote", onClick: () => this.edit((e) => mapLines(e, (l) => /^\s*>/.test(l) ? styleLine(l, 0) : styleLine(l, "quote"))) });
-    this.button(row, { icon: "code", tip: "Inline code", onClick: () => this.cmd("editor:toggle-code", (e) => wrap(e, "`", "`")) });
-    g = this.group(el, "Styles");
-    const gal = g.createDiv("onenote-style-gallery");
-    const styles = [
-      ["Heading 1", 1, "Ctrl+Alt+1"],
-      ["Heading 2", 2, "Ctrl+Alt+2"],
-      ["Heading 3", 3, "Ctrl+Alt+3"],
-      ["Heading 4", 4, "Ctrl+Alt+4"],
-      ["Quote", "quote", ""],
-      ["Normal", 0, "Ctrl+Shift+N"]
-    ];
-    for (const [name, style, keys] of styles) {
-      const it = gal.createDiv({ cls: "onenote-style-item", text: name, attr: { "data-style": String(style), "aria-label": keys ? `${name} (${keys})` : name, "data-tooltip-position": "bottom" } });
-      it.onclick = () => this.edit((e) => mapLines(e, (l) => styleLine(l, style)));
-    }
-    g = this.group(el, "Tags");
-    const tg = g.createDiv("onenote-tag-gallery");
-    for (const t of TAGS) {
-      const it = tg.createDiv({ cls: "onenote-tag-item", attr: { "aria-label": `${t.name} (Ctrl+${t.key})`, "data-tooltip-position": "bottom" } });
-      const ic = it.createSpan({ cls: "onenote-tag-icon", attr: { "data-tag": t.id } });
-      icon(ic, t.icon);
-      it.createSpan({ text: t.name });
-      it.onclick = () => this.edit((e) => mapLines(e, (l) => toggleTagLine(l, t.char)));
-    }
-    col = g.createDiv("onenote-col");
-    this.button(col, { icon: "check-square", label: "To Do Tag", tip: "To Do Tag (Ctrl+1)", onClick: () => this.edit((e) => mapLines(e, (l) => toggleTagLine(l, " "))) });
-    this.button(col, { icon: "search-check", fallback: "\u2315", label: "Find Tags", tip: "Find Tags", onClick: () => new TagSummaryModal(this.app, this).open() });
-    g = this.group(el, "Pages");
-    this.button(g, { icon: "file-plus", label: "New Page", big: true, tip: "New Page", onClick: () => this.createPage() });
-    this.button(g, { icon: "layout-dashboard", fallback: "\u25A6", label: "Add Canvas", big: true, tip: "Add a free-form Canvas page", onClick: () => this.createPage({ canvas: true }) });
-    col = g.createDiv("onenote-col");
-    this.button(col, { icon: "corner-down-right", label: "New Subpage", tip: "New Subpage (Ctrl+Shift+Alt+N)", onClick: () => this.createSubpage() });
-    this.button(col, { icon: "indent", label: "Make Subpage", tip: "Make this page a subpage of another page (Ctrl+Alt+])", onClick: () => this.withActivePage((f) => this.setLevel(f, 1)) });
-    this.button(col, { icon: "outdent", label: "Promote", tip: "Promote Subpage (Ctrl+Alt+[)", onClick: () => this.withActivePage((f) => this.setLevel(f, -1)) });
-    g = this.group(el, "AI");
-    this.aiButtons = /* @__PURE__ */ new Map();
-    this.aiStateKey = null;
-    this.aiButtons.set(AI_SYNC_ALL, this.button(g, { icon: "refresh-cw", fallback: "\u27F3", label: AI_SYNC_ALL.label, big: true, cls: "onenote-ai-btn", tip: AI_SYNC_ALL.tip, onClick: () => this.runAiSync(AI_SYNC_ALL) }));
-    for (const surfaces of AI_SURFACES) {
-      col = g.createDiv("onenote-col");
-      for (const s of surfaces) {
-        this.aiButtons.set(s, this.button(col, { icon: s.icon, label: s.label, cls: "onenote-ai-btn", tip: s.tip, onClick: () => this.runAiSync(s) }));
-      }
-    }
-    this.updateAiState();
-    g = this.group(el, "Theme");
-    const dark = document.body.hasClass("theme-dark");
-    this.button(g, { icon: "sun", fallback: "\u2600", label: "Light", big: true, active: !dark, tip: "Use light mode", onClick: () => this.setThemeMode(false) });
-    this.button(g, { icon: "moon", fallback: "\u263E", label: "Dark", big: true, active: dark, tip: "Use dark mode", onClick: () => this.setThemeMode(true) });
-    g = this.group(el, "Settings");
-    this.button(g, { icon: "settings", fallback: "\u2699", label: "Settings", big: true, tip: "Open Obsidian settings (Ctrl+,)", onClick: () => this.openSettings() });
-    this.button(g, { icon: "puzzle", fallback: "\u{1F9E9}", label: "Plugins", big: true, tip: "Open Community plugins", onClick: () => this.openSettings("community-plugins") });
-    this.button(g, { icon: "message-square-text", fallback: "\u{1F4AC}", label: "ChatBridge", big: true, tip: "Open AI ChatBridge settings", onClick: () => this.openAiSettings() });
-  }
-  /* ---------- AI ChatBridge syncs ---------- */
-  openAiSettings() {
-    if (!this.aiPlugin()) {
-      new import_obsidian.Notice("AI ChatBridge is not installed or not enabled.");
-      this.openSettings("community-plugins");
-      return;
-    }
-    this.openSettings(AI_PLUGIN);
-  }
-  aiPlugin() {
-    const plugins = this.app.plugins;
-    if (!plugins || !plugins.enabledPlugins || !plugins.enabledPlugins.has(AI_PLUGIN)) return null;
-    return plugins.plugins[AI_PLUGIN] || null;
-  }
-  aiBusy(p) {
-    return !!this.aiLocalRun || !!(p && p.busy);
-  }
-  // The accounts whose desktop app is turned on, or null if ChatBridge can't
-  // sync one provider's desktop app on its own (then its command is used).
-  aiDesktopAccounts(p, s) {
-    if (!p.settings || !Array.isArray(p.settings[s.desktop]) || typeof p.syncAccount !== "function") return null;
-    return p.settings[s.desktop].filter((a) => a.desktop && a.desktop.enabled);
-  }
-  aiReady(p, s) {
-    if (!p) return false;
-    if (!s.desktop) return true;
-    const accounts = this.aiDesktopAccounts(p, s);
-    return !accounts || accounts.length > 0;
-  }
-  async runAiSync(s) {
-    const p = this.aiPlugin();
-    if (!p) {
-      new import_obsidian.Notice("Install and enable AI ChatBridge to sync your AI chats.");
-      this.openSettings("community-plugins");
-      return;
-    }
-    if (this.aiBusy(p)) {
-      new import_obsidian.Notice("A sync is already running. You can follow it in the status bar.");
-      return;
-    }
-    if (!this.aiReady(p, s)) {
-      new import_obsidian.Notice(`${s.label} isn't turned on yet. Turn it on in AI ChatBridge, under Desktop app.`);
-      this.openSettings(AI_PLUGIN);
-      return;
-    }
-    this.aiSyncing = s.id;
-    const accounts = s.desktop ? this.aiDesktopAccounts(p, s) : null;
-    if (accounts) {
-      this.aiLocalRun = true;
-      this.updateAiState();
-      try {
-        for (const account of accounts) await p.syncAccount(s.desktop, account, "desktop");
-      } catch (err) {
-        console.error("OneNote Style: AI sync failed", err);
-        new import_obsidian.Notice(`${s.label} sync failed: ${err && err.message ? err.message : err}`);
-      } finally {
-        this.aiLocalRun = false;
-        this.updateAiState();
-      }
-      return;
-    }
-    if (!this.exec(`${AI_PLUGIN}:${s.command}`)) {
-      this.aiSyncing = null;
-      new import_obsidian.Notice("This version of AI ChatBridge can't run that sync. Try updating the plugin.");
-    }
-    this.updateAiState();
-  }
-  // Runs every half second, so it only touches the buttons when something changed.
-  updateAiState() {
-    if (!this.aiButtons) return;
-    const p = this.aiPlugin();
-    const busy = this.aiBusy(p);
-    if (!busy) this.aiSyncing = null;
-    const active = busy ? this.aiSyncing || AI_SYNC_ALL.id : null;
-    const ready = Array.from(this.aiButtons.keys()).map((s) => this.aiReady(p, s));
-    const key = [!!p, active, ready.join()].join("|");
-    if (key === this.aiStateKey) return;
-    this.aiStateKey = key;
-    let i = 0;
-    for (const [s, el] of this.aiButtons) {
-      const isReady = ready[i++];
-      const running = s.id === active;
-      el.toggleClass("is-syncing", running);
-      el.toggleClass("is-locked", busy && !running);
-      el.toggleClass("is-unavailable", !isReady);
-      el.setAttr("aria-busy", running ? "true" : "false");
-      let tip = s.tip;
-      if (running) tip = s === AI_SYNC_ALL ? "Syncing your AI chats..." : `Syncing ${s.label}...`;
-      else if (busy) tip = "A sync is running";
-      else if (!p) tip = "Needs the AI ChatBridge plugin. Click to open Community plugins";
-      else if (!isReady) tip = `${s.label} isn't turned on. Click to open AI ChatBridge settings`;
-      el.setAttr("aria-label", tip);
-    }
-  }
-  openSettings(tabId) {
-    const setting = this.app.setting;
-    if (!setting) {
-      this.exec("app:open-settings");
-      return;
-    }
-    setting.open();
-    if (tabId && setting.openTabById) setting.openTabById(tabId);
-  }
-  setThemeMode(dark) {
-    if (this.app.changeTheme) this.app.changeTheme(dark ? "obsidian" : "moonstone");
-    else if (document.body.hasClass("theme-dark") !== dark) this.exec("theme:toggle-light-dark");
-    setTimeout(() => this.renderRibbon(), 50);
-  }
-  renderInsertTab(el) {
-    let g = this.group(el, "Tables");
-    this.button(g, { icon: "table", label: "Table", big: true, dropdown: true, tip: "Insert Table", onClick: (e, b) => this.tablePicker(b) });
-    g = this.group(el, "Files");
-    this.button(g, { icon: "paperclip", label: "File", big: true, tip: "Insert a file or picture", onClick: () => this.cmd("editor:attach-file", () => new import_obsidian.Notice("Drag a file onto the page to attach it.")) });
-    let col = g.createDiv("onenote-col");
-    this.button(col, { icon: "image", label: "Picture", tip: "Insert a picture", onClick: () => this.cmd("editor:attach-file") });
-    this.button(col, { icon: "file-input", fallback: "\u29C9", label: "Embed Page", tip: "Embed another page", onClick: () => this.edit((e) => e.replaceSelection("![[")) });
-    g = this.group(el, "Links");
-    this.button(g, { icon: "link", label: "Link", big: true, tip: "Link (Ctrl+K)", onClick: () => this.cmd("editor:insert-link", (e) => wrap(e, "[", "]()")) });
-    this.button(g, { icon: "file-symlink", fallback: "\u21E2", label: "Page Link", big: true, tip: "Link to a page", onClick: () => this.cmd("editor:insert-wikilink", (e) => wrap(e, "[[", "]]")) });
-    g = this.group(el, "Time Stamp");
-    this.button(g, { icon: "calendar", label: "Date", big: true, tip: "Insert Date (Alt+Shift+D)", onClick: () => this.stamp("date") });
-    this.button(g, { icon: "clock", label: "Time", big: true, tip: "Insert Time (Alt+Shift+T)", onClick: () => this.stamp("time") });
-    this.button(g, { icon: "calendar-clock", fallback: "\u23F1", label: "Date & Time", big: true, tip: "Insert Date & Time (Alt+Shift+F)", onClick: () => this.stamp("datetime") });
-    g = this.group(el, "Blocks");
-    col = g.createDiv("onenote-col");
-    this.button(col, { icon: "message-square", label: "Callout", tip: "Insert callout", onClick: () => this.cmd("editor:insert-callout", (e) => insertBlock(e, "> [!note]\n> ", 12)) });
-    this.button(col, { icon: "code-2", fallback: "{}", label: "Code Block", tip: "Insert code block", onClick: () => this.cmd("editor:insert-codeblock", (e) => insertBlock(e, "```\n\n```", 4)) });
-    this.button(col, { icon: "minus", label: "Divider", tip: "Insert horizontal line", onClick: () => this.edit((e) => insertBlock(e, "---")) });
-    g = this.group(el, "Symbols");
-    this.button(g, { icon: "sigma", label: "Equation", big: true, tip: "Insert math block", onClick: () => this.cmd("editor:insert-mathblock", (e) => insertBlock(e, "$$\n\n$$", 3)) });
-    this.button(g, { icon: "omega", fallback: "\u03A9", label: "Symbol", big: true, dropdown: true, tip: "Insert symbol", onClick: (e, b) => this.symbolPicker(b) });
-    g = this.group(el, "Pages");
-    this.button(g, { icon: "layout-dashboard", label: "Free-form Page", big: true, tip: "New free-form page (Obsidian Canvas)", onClick: () => this.createPage({ canvas: true }) });
-  }
-  renderViewTab(el) {
+  // Runs the command behind a ribbon button.
+  runRibbonCommand(id) {
     const ws = this.app.workspace;
-    const full = document.body.hasClass("onenote-fullpage");
-    let g = this.group(el, "Views");
-    this.button(g, { icon: "layout", fallback: "\u25AD", label: "Normal View", big: true, active: !full, onClick: () => {
-      if (full) this.toggleFullPage();
-    } });
-    this.button(g, { icon: "maximize-2", label: "Full Page View", big: true, active: full, onClick: () => this.toggleFullPage() });
-    this.button(g, { icon: "book-open-check", fallback: "\u{1F441}", label: "Read / Edit", big: true, tip: "Toggle reading view (Ctrl+E)", onClick: () => this.exec("markdown:toggle-preview") });
-    g = this.group(el, "Page Setup");
-    this.button(g, { icon: "paint-bucket", label: "Page Color", big: true, dropdown: true, onClick: (e, b) => this.pageColorPicker(b) });
-    this.button(g, { icon: "align-justify", label: "Rule Lines", big: true, dropdown: true, onClick: (e, b) => {
-      const m = new import_obsidian.Menu();
-      for (const r of RULE_LINES) m.addItem((i) => i.setTitle(r.name).setChecked(this.settings.ruleLines === r.id).onClick(() => this.setAppearance("ruleLines", r.id)));
-      const rect = b.getBoundingClientRect();
-      m.showAtPosition({ x: rect.left, y: rect.bottom });
-    } });
-    this.button(g, { icon: "move-horizontal", fallback: "\u2194", label: "Page Width", big: true, dropdown: true, onClick: (e, b) => {
-      const m = new import_obsidian.Menu();
-      for (const w of PAGE_WIDTHS) m.addItem((i) => i.setTitle(w.name).setChecked(this.settings.pageWidth === w.id).onClick(() => this.setAppearance("pageWidth", w.id)));
-      const rect = b.getBoundingClientRect();
-      m.showAtPosition({ x: rect.left, y: rect.bottom });
-    } });
-    g = this.group(el, "Zoom");
-    this.button(g, { icon: "zoom-out", label: "Zoom Out", big: true, onClick: () => this.exec("window:zoom-out") });
-    this.button(g, { icon: "zoom-in", label: "Zoom In", big: true, onClick: () => this.exec("window:zoom-in") });
-    this.button(g, { icon: "scan", fallback: "1:1", label: "100%", big: true, onClick: () => this.exec("window:reset-zoom") });
-    g = this.group(el, "Window");
-    this.button(g, { icon: "panel-left", label: "Navigation", big: true, active: !ws.leftSplit.collapsed, tip: "Show or hide the notebooks pane", onClick: () => this.togglePane(NOTEBOOKS_VIEW) });
-    this.button(g, { icon: "panel-right", label: "Page List", big: true, tip: "Show or hide the page list", onClick: () => this.togglePane(PAGES_VIEW) });
-    this.button(g, { icon: "folder-kanban", fallback: "\u25A4", label: "Section Tabs", big: true, active: this.settings.showSectionTabs, onClick: async () => {
-      this.settings.showSectionTabs = !this.settings.showSectionTabs;
-      await this.persist();
-      this.buildTopBar();
-    } });
+    let ok = executeCommand(this.app, id);
+    if (!ok) {
+      const v = this.lastMarkdownView;
+      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.activeLeaf !== v.leaf) {
+        ws.setActiveLeaf(v.leaf, { focus: true });
+        ok = executeCommand(this.app, id);
+      }
+    }
+    if (!ok) new import_obsidian3.Notice("This command can't be used here right now.");
+    return ok;
+  }
+  // Where a picker should open: under the ribbon button that was just clicked, else at
+  // the top of the page (when the command came from the command palette or a hotkey).
+  pickerAnchor() {
+    const r = this.ribbon && this.ribbon.lastAnchor();
+    if (r) return r;
+    const v = this.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
+    const box = (v ? v.contentEl : document.body).getBoundingClientRect();
+    return { left: box.left + 24, bottom: box.top + 24 };
+  }
+  choiceMenu(choices, key) {
+    const m = new import_obsidian3.Menu();
+    for (const c of choices) {
+      m.addItem((i) => i.setTitle(c.name).setChecked(this.settings[key] === c.id).onClick(() => this.setAppearance(key, c.id)));
+    }
+    const r = this.pickerAnchor();
+    m.showAtPosition({ x: r.left, y: r.bottom + 2 });
+  }
+  // Replaces the whole layout (import, reset, undo). The layout it replaces is kept so
+  // the last replacement can be undone.
+  replaceRibbonLayout(layout, keepPrevious) {
+    this.ribbonPrevious = keepPrevious === false ? null : this.ribbonLayout;
+    this.ribbonLayout = layout;
+    const tab = activeTab(layout, this.state.ribbonTab);
+    this.state.ribbonTab = tab ? tab.id : "";
+    this.ribbon.changed();
+  }
+  async exportRibbon() {
+    const name = `Ribbon layout ${(0, import_obsidian3.moment)().format("YYYY-MM-DD HHmmss")}.json`;
+    try {
+      await this.app.vault.create((0, import_obsidian3.normalizePath)(name), exportLayout(this.ribbonLayout));
+      new import_obsidian3.Notice(`Ribbon layout saved in your vault as "${name}".`, 8e3);
+      return name;
+    } catch (e) {
+      new import_obsidian3.Notice(`Could not save the ribbon layout: ${e && e.message ? e.message : e}`);
+      return null;
+    }
+  }
+  importRibbon() {
+    const input = createEl("input", { type: "file", attr: { accept: ".json,application/json" } });
+    input.onchange = async () => {
+      const f = input.files && input.files[0];
+      if (f) this.importRibbonText(await f.text());
+    };
+    input.click();
+  }
+  importRibbonText(text) {
+    let layout;
+    try {
+      layout = importLayout(text);
+    } catch (e) {
+      new import_obsidian3.Notice(`The ribbon layout was not imported. ${e.message}`, 8e3);
+      return false;
+    }
+    this.replaceRibbonLayout(layout);
+    new import_obsidian3.Notice('Ribbon layout imported. To go back, run the command "Ribbon: undo last import or reset".', 8e3);
+    return true;
+  }
+  async resetRibbon() {
+    const ok = await this.confirm("Reset the ribbon", 'Replace all tabs, groups and buttons with the default layout? You can undo this once with the command "Ribbon: undo last import or reset".', "Reset");
+    if (!ok) return false;
+    this.replaceRibbonLayout(defaultLayout());
+    return true;
+  }
+  undoRibbonReplace() {
+    if (!this.ribbonPrevious) {
+      new import_obsidian3.Notice("There is no earlier ribbon layout to go back to.");
+      return false;
+    }
+    const previous = this.ribbonPrevious;
+    this.replaceRibbonLayout(previous, false);
+    new import_obsidian3.Notice("The earlier ribbon layout is back.");
+    return true;
+  }
+  openAiSettings() {
+    if (!isPluginEnabled(this.app, AI_PLUGIN)) {
+      new import_obsidian3.Notice("AI ChatBridge is not installed or not enabled.");
+      openSettings(this.app, "community-plugins");
+      return;
+    }
+    openSettings(this.app, AI_PLUGIN);
   }
   renderSectionTabs() {
     const el = this.sectionTabsEl;
@@ -1929,7 +3351,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     sw.createSpan({ cls: "onenote-nb-switch-name", text: nb ? this.notebookName(nb) : "No notebook" });
     icon(sw.createSpan("onenote-nb-switch-caret"), "chevron-down", "\u25BE");
     sw.onclick = (e) => {
-      const m = new import_obsidian.Menu();
+      const m = new import_obsidian3.Menu();
       for (const n of this.getNotebooks()) {
         m.addItem((i) => i.setTitle(this.notebookName(n)).setIcon("book").setChecked(n === nb).onClick(() => this.openNotebook(n)));
       }
@@ -1975,7 +3397,7 @@ var OneNotePlugin = class extends import_obsidian.Plugin {
     };
     pop.addEventListener("mousedown", (e) => e.preventDefault());
     build(pop, close);
-    const r = anchor ? anchor.getBoundingClientRect() : { left: pos.x, bottom: pos.y };
+    const r = !anchor ? { left: pos.x, bottom: pos.y } : anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     pop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
     pop.style.top = Math.min(r.bottom + 2, window.innerHeight - pop.offsetHeight - 8) + "px";
     setTimeout(() => {

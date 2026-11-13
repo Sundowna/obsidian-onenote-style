@@ -14,6 +14,10 @@ import {
   Plugin, ItemView, MarkdownView, Modal, Menu, Notice, PluginSettingTab, Setting,
   TFile, TFolder, FuzzySuggestModal, setIcon, addIcon, moment, normalizePath, debounce,
 } from 'obsidian';
+import { RibbonView } from './ribbon/view.js';
+import { defaultLayout } from './ribbon/defaults.js';
+import { normalizeLayout, exportLayout, importLayout, activeTab } from './ribbon/model.js';
+import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode } from './ribbon/internal.js';
 
 const NOTEBOOKS_VIEW = 'onenote-notebooks';
 const PAGES_VIEW = 'onenote-pages';
@@ -64,21 +68,7 @@ const BRAND_ICONS = {
   'onenote-ai-lumo': '<g transform="scale(1.5625)" fill="currentColor" stroke="none"><path d="M42.4499 12.1097L49.6457 7.48831C52.1406 5.8859 55.4516 7.43191 55.8298 10.3713L57.5715 23.9337L42.4465 12.1097H42.4499Z"/><path d="M22.9165 12.1097L15.7206 7.48831C13.2257 5.8859 9.91475 7.43191 9.53654 10.3713L7.7948 23.9337L22.9198 12.1097H22.9165Z"/><path d="M46.5833 39.8431C48.3991 39.8431 49.871 37.4443 49.871 34.4852C49.871 31.5261 48.3991 29.1273 46.5833 29.1273C44.7675 29.1273 43.2955 31.5261 43.2955 34.4852C43.2955 37.4443 44.7675 39.8431 46.5833 39.8431Z"/><path d="M18.7383 40.2558C20.5541 40.2558 22.0261 37.857 22.0261 34.8979C22.0261 31.9387 20.5541 29.5399 18.7383 29.5399C16.9225 29.5399 15.4506 31.9387 15.4506 34.8979C15.4506 37.857 16.9225 40.2558 18.7383 40.2558Z"/><path fill-rule="evenodd" d="M62.5401 38.1462C62.5401 51.9873 46.1147 56.9206 32.413 56.9206C20.37 56.9206 2.28577 51.9873 2.28577 38.1462C2.28577 24.3052 15.7752 10.3148 32.413 10.3148C49.0508 10.3148 62.5401 24.3052 62.5401 38.1462Z M47.1845 42.6603C52.1662 40.5117 54.6588 35.1856 52.7519 30.7641C50.845 26.3426 45.2606 24.5 40.2788 26.6486C35.2971 28.7972 32.8044 34.1233 34.7114 38.5448C36.6183 42.9663 42.2027 44.8088 47.1845 42.6603Z M24.7442 38.542C26.6511 34.1205 24.1585 28.7944 19.1768 26.6458C14.195 24.4973 8.61062 26.3398 6.70368 30.7613C4.79674 35.1828 7.28936 40.5089 12.2711 42.6575C17.2529 44.8061 22.8373 42.9635 24.7442 38.542Z"/></g>',
 };
 
-// What the AI group syncs. "command" is an AI ChatBridge command id. "desktop"
-// names the ChatBridge provider whose desktop app that button syncs.
 const AI_PLUGIN = 'ai-chatbridge';
-const AI_SYNC_ALL = { id: 'all', label: 'Sync All', tip: 'Sync all your AI chats into the vault', command: 'sync-all-chats' };
-const AI_SURFACES = [
-  [
-    { id: 'claude', label: 'Claude', icon: 'onenote-ai-claude', tip: 'Sync your claude.ai chats', command: 'sync-claude-chats' },
-    { id: 'chatgpt', label: 'ChatGPT', icon: 'onenote-ai-openai', tip: 'Sync your ChatGPT chats', command: 'sync-chatgpt-chats' },
-    { id: 'lumo', label: 'Lumo', icon: 'onenote-ai-lumo', tip: 'Sync your Proton Lumo chats', command: 'sync-lumo-chats' },
-  ],
-  [
-    { id: 'claude-desktop', label: 'Claude Desktop', icon: 'onenote-ai-claude', tip: 'Sync the Claude desktop app and Claude Code', command: 'sync-desktop-app-chats', desktop: 'claude' },
-    { id: 'codex', label: 'Codex', icon: 'onenote-ai-codex', tip: 'Sync the ChatGPT desktop app and Codex', command: 'sync-desktop-app-chats', desktop: 'chatgpt' },
-  ],
-];
 
 const TAGS = [
   { id: 'todo', name: 'To Do', char: ' ', icon: 'check-square', key: '1' },
@@ -689,6 +679,18 @@ class OneNoteSettingTab extends PluginSettingTab {
     new Setting(el).setName('Time format')
       .addMomentFormat((m) => m.setValue(s.timeFormat).setDefaultFormat(DEFAULT_SETTINGS.timeFormat)
         .onChange(async (v) => { s.timeFormat = v || DEFAULT_SETTINGS.timeFormat; await changed(); }));
+
+    el.createEl('h3', { text: 'Ribbon layout' });
+    el.createEl('p', {
+      cls: 'setting-item-description',
+      text: 'You customise the ribbon on the ribbon itself: right-click a button, a group, a tab or an empty area, or drag buttons between groups. The buttons below are only a backup.',
+    });
+    new Setting(el).setName('Export or import').setDesc('Export saves the whole layout as one JSON file in your vault. Import replaces the current layout with a file you choose.')
+      .addButton((b) => b.setButtonText('Export').onClick(() => p.exportRibbon()))
+      .addButton((b) => b.setButtonText('Import').onClick(() => p.importRibbon()));
+    new Setting(el).setName('Reset').setDesc('Go back to the default tabs, groups and buttons.')
+      .addButton((b) => b.setButtonText('Undo last import or reset').onClick(() => p.undoRibbonReplace()))
+      .addButton((b) => b.setButtonText('Reset to default').setWarning().onClick(() => p.resetRibbon()));
   }
 }
 
@@ -699,12 +701,15 @@ class OneNoteSettingTab extends PluginSettingTab {
 class OneNotePlugin extends Plugin {
   async onload() {
     for (const name of Object.keys(BRAND_ICONS)) addIcon(name, BRAND_ICONS[name]);
-    // Keeps the AI buttons in step with AI ChatBridge, including its timed syncs.
-    this.registerInterval(window.setInterval(() => this.updateAiState(), 500));
     const data = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
     this.state = Object.assign({}, DEFAULT_STATE, data.state);
     for (const k of MAP_KEYS) this.state[k] = Object.assign({}, this.state[k]);
+    this.ribbonLayout = this.loadRibbonLayout(data.ribbon);
+    this.ribbonPrevious = data.ribbonPrevious || null;
+    this.ribbon = new RibbonView(this);
+    // Greys buttons out (or brings them back) when a plugin is turned off or on.
+    this.registerInterval(window.setInterval(() => this.ribbon.tick(), 1500));
 
     this.lastMarkdownView = null;
     this.popover = null;
@@ -730,6 +735,8 @@ class OneNotePlugin extends Plugin {
         this.decoratePageHeaders();
       }));
       this.registerEvent(workspace.on('layout-change', () => this.decoratePageHeaders()));
+      // Fonts or theme changed: button widths may differ, so measure again.
+      this.registerEvent(workspace.on('css-change', () => this.ribbon.remeasure()));
       this.registerEvent(metadataCache.on('changed', () => this.decoratePageHeaders()));
 
       const mv = workspace.getActiveViewOfType(MarkdownView);
@@ -761,6 +768,7 @@ class OneNotePlugin extends Plugin {
 
   onunload() {
     this.closePopover();
+    if (this.ribbon) this.ribbon.unmount();
     if (this.topBar) this.topBar.remove();
     const b = document.body;
     for (const c of Array.from(b.classList)) if (c.startsWith('onenote-')) b.removeClass(c);
@@ -771,7 +779,22 @@ class OneNotePlugin extends Plugin {
   }
 
   async persist() {
-    await this.saveData({ settings: this.settings, state: this.state });
+    const data = { settings: this.settings, state: this.state, ribbon: this.ribbonLayout };
+    if (this.ribbonPrevious) data.ribbonPrevious = this.ribbonPrevious;
+    await this.saveData(data);
+  }
+
+  // The saved ribbon layout, or the default one if nothing usable was saved.
+  loadRibbonLayout(saved) {
+    if (saved) {
+      try {
+        const layout = normalizeLayout(saved);
+        if (layout.tabs.length) return layout;
+      } catch (e) {
+        console.error('OneNote Style: saved ribbon layout is unreadable, using the default', e);
+      }
+    }
+    return defaultLayout();
   }
 
   /* ---------- structure ---------- */
@@ -1319,7 +1342,6 @@ class OneNotePlugin extends Plugin {
     this.settings[key] = value;
     await this.persist();
     this.applyAppearance();
-    this.renderRibbon();
   }
 
   decoratePageHeaders() {
@@ -1430,7 +1452,6 @@ class OneNotePlugin extends Plugin {
     const split = root === ws.leftSplit ? ws.leftSplit : root === ws.rightSplit ? ws.rightSplit : null;
     if (split && !split.collapsed && leaf.view.containerEl.isShown()) split.collapse();
     else ws.revealLeaf(leaf);
-    setTimeout(() => this.renderRibbon(), 50);
   }
 
   toggleFullPage() {
@@ -1447,7 +1468,6 @@ class OneNotePlugin extends Plugin {
       if (!prev.right) ws.rightSplit.expand();
     }
     this.renderTabRow();
-    this.renderRibbon();
   }
 
   /* ---------- editor actions ---------- */
@@ -1556,6 +1576,35 @@ class OneNotePlugin extends Plugin {
     this.addCommand({ id: 'toggle-ribbon', name: 'Collapse or expand the ribbon', callback: () => this.toggleRibbon(), hotkeys: key(['Mod'], 'F1') });
     this.addCommand({ id: 'full-page-view', name: 'Toggle full page view', callback: () => this.toggleFullPage() });
     this.addCommand({ id: 'show-panes', name: 'Show notebooks and pages panes', callback: () => this.activatePanes(true) });
+
+    // Commands for the ribbon's default buttons. Every ribbon button runs a command,
+    // so everything the old fixed ribbon could do is a command now.
+    const run = (id, name, callback) => this.addCommand({ id, name, callback });
+    run('paste', 'Paste', () => this.paste());
+    run('cut', 'Cut', () => this.copy(true));
+    run('copy', 'Copy', () => this.copy(false));
+    run('undo', 'Undo', () => this.edit((e) => e.undo()));
+    run('redo', 'Redo', () => this.edit((e) => e.redo()));
+    run('highlight-color', 'Highlight color...', () => this.highlightPicker(this.pickerAnchor()));
+    run('font-color', 'Font color...', () => this.fontColorPicker(this.pickerAnchor()));
+    run('insert-table-grid', 'Insert table (choose size)...', () => this.tablePicker(this.pickerAnchor()));
+    run('insert-symbol', 'Insert symbol...', () => this.symbolPicker(this.pickerAnchor()));
+    run('page-color', 'Page color...', () => this.pageColorPicker(this.pickerAnchor()));
+    run('rule-lines', 'Rule lines...', () => this.choiceMenu(RULE_LINES, 'ruleLines'));
+    run('page-width', 'Page width...', () => this.choiceMenu(PAGE_WIDTHS, 'pageWidth'));
+    run('use-light-mode', 'Use light mode', () => setDarkMode(this.app, false, document));
+    run('use-dark-mode', 'Use dark mode', () => setDarkMode(this.app, true, document));
+    run('open-community-plugins', 'Open Community plugins', () => openSettings(this.app, 'community-plugins'));
+    run('open-ai-chatbridge-settings', 'Open AI ChatBridge settings', () => this.openAiSettings());
+    run('toggle-section-tabs', 'Show or hide section tabs', async () => {
+      this.settings.showSectionTabs = !this.settings.showSectionTabs;
+      await this.persist();
+      this.buildTopBar();
+    });
+    run('ribbon-export', 'Ribbon: export layout to a file', () => this.exportRibbon());
+    run('ribbon-import', 'Ribbon: import layout from a file', () => this.importRibbon());
+    run('ribbon-reset', 'Ribbon: reset to the default layout', () => this.resetRibbon());
+    run('ribbon-undo-replace', 'Ribbon: undo last import or reset', () => this.undoRibbonReplace());
   }
 
   withActivePage(fn) {
@@ -1572,67 +1621,66 @@ class OneNotePlugin extends Plugin {
   /* ---------- top bar: tab row, ribbon, section tabs ---------- */
 
   buildTopBar() {
+    if (this.ribbon) this.ribbon.unmount();
     if (this.topBar) this.topBar.remove();
     this.topBar = null;
-    const container = document.body.querySelector('.app-container');
-    const main = container && container.querySelector(':scope > .horizontal-main-container');
+    const at = mountPoint(document);
     const s = this.settings;
-    document.body.toggleClass('onenote-has-topbar', !!main && (s.showRibbon || s.showSectionTabs));
-    if (!main || (!s.showRibbon && !s.showSectionTabs)) return;
+    document.body.toggleClass('onenote-has-topbar', !!at && (s.showRibbon || s.showSectionTabs));
+    if (!at || (!s.showRibbon && !s.showSectionTabs)) return;
 
     const bar = createDiv('onenote-topbar');
-    container.insertBefore(bar, main);
+    at.parent.insertBefore(bar, at.before);
     this.topBar = bar;
     // Keep the editor's focus and selection when clicking toolbar buttons.
     bar.addEventListener('mousedown', (e) => {
       if (!e.target.closest('input, select, textarea')) e.preventDefault();
     });
+    this.tabRowEl = this.qatEl = this.tabRowEndEl = this.ribbonEl = null;
     if (s.showRibbon) {
       this.tabRowEl = bar.createDiv('onenote-tabrow');
+      this.qatEl = this.tabRowEl.createDiv('onenote-qat');
+      const tabsEl = this.tabRowEl.createDiv({ cls: 'onenote-tabs', attr: { role: 'tablist' } });
+      this.tabRowEl.createDiv('onenote-tabrow-spacer');
+      this.tabRowEndEl = this.tabRowEl.createDiv('onenote-tabrow-end');
       this.ribbonEl = bar.createDiv('onenote-ribbon');
       this.tabRowEl.addEventListener('dblclick', (e) => {
-        if (e.target.closest('.onenote-tab')) this.toggleRibbon();
+        if (e.target.closest('.onenote-tab[data-tab]')) this.toggleRibbon();
       });
-    } else {
-      this.tabRowEl = null;
-      this.ribbonEl = null;
+      this.renderTabRow();
+      this.ribbon.mount(bar, tabsEl, this.ribbonEl);
     }
     this.sectionTabsEl = s.showSectionTabs ? bar.createDiv('onenote-section-tabs') : null;
-    this.renderTabRow();
-    this.renderRibbon();
     this.renderSectionTabs();
   }
 
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;
     this.save();
-    this.renderRibbon();
+    if (this.ribbon) this.ribbon.renderBody();
   }
 
+  // The fixed parts of the tab row: Undo / Redo on the left, search on the right.
+  // The tabs between them are drawn by the ribbon.
   renderTabRow() {
-    const el = this.tabRowEl;
-    if (!el) return;
-    el.empty();
-    const qat = el.createDiv('onenote-qat');
-    this.button(qat, { icon: 'undo', tip: 'Undo (Ctrl+Z)', onClick: () => this.edit((e) => e.undo()) });
-    this.button(qat, { icon: 'redo', tip: 'Redo (Ctrl+Y)', onClick: () => this.edit((e) => e.redo()) });
+    if (!this.qatEl) return;
+    const tool = (parent, iconName, tip, onClick, label) => {
+      const b = parent.createEl('button', { cls: 'onenote-btn' + (label ? ' has-label' : ''), attr: { type: 'button', 'aria-label': tip, 'data-tooltip-position': 'bottom' } });
+      icon(b.createSpan('onenote-btn-icon'), iconName, tip[0]);
+      if (label) b.createSpan({ cls: 'onenote-btn-label', text: label });
+      b.onclick = onClick;
+      return b;
+    };
+    this.qatEl.empty();
+    tool(this.qatEl, 'undo', 'Undo (Ctrl+Z)', () => this.edit((e) => e.undo()));
+    tool(this.qatEl, 'redo', 'Redo (Ctrl+Y)', () => this.edit((e) => e.redo()));
 
-    const tabs = el.createDiv('onenote-tabs');
-    for (const [id, label] of [['home', 'Home'], ['insert', 'Insert'], ['view', 'View']]) {
-      const t = tabs.createDiv({ cls: 'onenote-tab' + (this.state.ribbonTab === id ? ' is-active' : ''), text: label });
-      t.onclick = () => {
-        this.state.ribbonTab = id;
-        if (this.state.ribbonCollapsed) this.state.ribbonCollapsed = false;
-        this.save();
-        this.renderTabRow();
-        this.renderRibbon();
-      };
-    }
-    el.createDiv('onenote-tabrow-spacer');
+    const end = this.tabRowEndEl;
+    end.empty();
     if (document.body.hasClass('onenote-fullpage')) {
-      this.button(el, { icon: 'minimize-2', label: 'Exit Full Page', cls: 'onenote-tabrow-btn', onClick: () => this.toggleFullPage() });
+      tool(end, 'minimize-2', 'Exit full page view', () => this.toggleFullPage(), 'Exit Full Page');
     }
-    const search = el.createDiv('onenote-search');
+    const search = end.createDiv('onenote-search');
     icon(search.createSpan('onenote-search-icon'), 'search', '⌕');
     const input = search.createEl('input', { type: 'search', attr: { placeholder: 'Search (Ctrl+Shift+F)' } });
     input.addEventListener('keydown', (e) => {
@@ -1644,322 +1692,119 @@ class OneNotePlugin extends Plugin {
     });
   }
 
-  button(parent, o) {
-    const b = parent.createEl('button', { cls: ['onenote-btn', o.big ? 'is-big' : 'is-small', o.label && !o.big ? 'has-label' : '', o.cls || '', o.active ? 'is-active' : ''].filter(Boolean).join(' ') });
-    if (o.icon) icon(b.createSpan('onenote-btn-icon'), o.icon, o.fallback || (o.label || o.tip || '?')[0]);
-    if (o.label) b.createSpan({ cls: 'onenote-btn-label', text: o.label });
-    if (o.dropdown) icon(b.createSpan('onenote-btn-caret'), 'chevron-down', '▾');
-    b.setAttr('aria-label', o.tip || o.label || '');
-    b.setAttr('data-tooltip-position', 'bottom');
-    b.onclick = (e) => o.onClick(e, b);
-    return b;
-  }
+  /* ---------- ribbon: what the ribbon view needs from the plugin ---------- */
 
-  group(parent, label, cls) {
-    const g = parent.createDiv('onenote-group' + (cls ? ' ' + cls : ''));
-    const body = g.createDiv('onenote-group-body');
-    g.createDiv({ cls: 'onenote-group-label', text: label });
-    return body;
-  }
+  saveRibbon() { this.save(); }
 
-  renderRibbon() {
-    const el = this.ribbonEl;
-    if (!el) return;
-    el.empty();
-    this.aiButtons = null;
-    this.topBar.toggleClass('is-ribbon-collapsed', !!this.state.ribbonCollapsed);
-    if (this.state.ribbonCollapsed) return;
-    const tab = this.state.ribbonTab;
-    if (tab === 'insert') this.renderInsertTab(el);
-    else if (tab === 'view') this.renderViewTab(el);
-    else this.renderHomeTab(el);
-    const collapse = el.createDiv({ cls: 'onenote-ribbon-collapse', attr: { 'aria-label': 'Collapse the ribbon (Ctrl+F1)' } });
-    icon(collapse, 'chevron-up', '^');
-    collapse.onclick = () => this.toggleRibbon();
-  }
+  promptText(title, value, cta) { return promptText(this.app, title, value, cta); }
 
-  renderHomeTab(el) {
-    // Clipboard
-    let g = this.group(el, 'Clipboard');
-    this.button(g, { icon: 'clipboard-paste', label: 'Paste', big: true, tip: 'Paste (Ctrl+V)', onClick: () => this.paste() });
-    let col = g.createDiv('onenote-col');
-    this.button(col, { icon: 'scissors', label: 'Cut', tip: 'Cut (Ctrl+X)', onClick: () => this.copy(true) });
-    this.button(col, { icon: 'copy', label: 'Copy', tip: 'Copy (Ctrl+C)', onClick: () => this.copy(false) });
+  confirm(title, message, cta) { return confirmAction(this.app, title, message, cta); }
 
-    // Basic text
-    g = this.group(el, 'Basic Text');
-    col = g.createDiv('onenote-col');
-    let row = col.createDiv('onenote-row');
-    this.button(row, { icon: 'bold', tip: 'Bold (Ctrl+B)', onClick: () => this.cmd('editor:toggle-bold', (e) => wrap(e, '**', '**')) });
-    this.button(row, { icon: 'italic', tip: 'Italic (Ctrl+I)', onClick: () => this.cmd('editor:toggle-italics', (e) => wrap(e, '*', '*')) });
-    this.button(row, { icon: 'underline', tip: 'Underline (Ctrl+U)', onClick: () => this.edit((e) => wrap(e, '<u>', '</u>')) });
-    this.button(row, { icon: 'strikethrough', tip: 'Strikethrough', onClick: () => this.cmd('editor:toggle-strikethrough', (e) => wrap(e, '~~', '~~')) });
-    this.button(row, { icon: 'subscript', tip: 'Subscript', onClick: () => this.edit((e) => wrap(e, '<sub>', '</sub>')) });
-    this.button(row, { icon: 'superscript', tip: 'Superscript', onClick: () => this.edit((e) => wrap(e, '<sup>', '</sup>')) });
-    row.createDiv('onenote-sep');
-    const hl = row.createDiv('onenote-split');
-    this.button(hl, { icon: 'highlighter', tip: 'Text Highlight Color (Ctrl+Alt+H)', cls: 'onenote-hl-btn', onClick: () => this.cmd('editor:toggle-highlight', (e) => wrap(e, '==', '==')) });
-    this.button(hl, { icon: 'chevron-down', tip: 'Highlight colors', cls: 'onenote-caret-btn', onClick: (e, b) => this.highlightPicker(b) });
-    const fc = row.createDiv('onenote-split');
-    this.button(fc, { icon: 'baseline', fallback: 'A', tip: 'Font Color', cls: 'onenote-fc-btn', onClick: () => this.edit((e) => wrap(e, '<span style="color:#C00000">', '</span>')) });
-    this.button(fc, { icon: 'chevron-down', tip: 'Font colors', cls: 'onenote-caret-btn', onClick: (e, b) => this.fontColorPicker(b) });
-    this.button(row, { icon: 'eraser', tip: 'Clear All Formatting', onClick: () => this.edit((e) => this.clearFormat(e)) });
-    row = col.createDiv('onenote-row');
-    this.button(row, { icon: 'list', tip: 'Bullets (Ctrl+.)', onClick: () => this.cmd('editor:toggle-bullet-list') });
-    this.button(row, { icon: 'list-ordered', tip: 'Numbering', onClick: () => this.cmd('editor:toggle-numbered-list') });
-    this.button(row, { icon: 'outdent', tip: 'Decrease Indent (Shift+Tab)', onClick: () => this.edit((e) => e.exec('indentLess')) });
-    this.button(row, { icon: 'indent', tip: 'Increase Indent (Tab)', onClick: () => this.edit((e) => e.exec('indentMore')) });
-    this.button(row, { icon: 'quote', tip: 'Quote', onClick: () => this.edit((e) => mapLines(e, (l) => (/^\s*>/.test(l) ? styleLine(l, 0) : styleLine(l, 'quote')))) });
-    this.button(row, { icon: 'code', tip: 'Inline code', onClick: () => this.cmd('editor:toggle-code', (e) => wrap(e, '`', '`')) });
-
-    // Styles gallery
-    g = this.group(el, 'Styles');
-    const gal = g.createDiv('onenote-style-gallery');
-    const styles = [
-      ['Heading 1', 1, 'Ctrl+Alt+1'], ['Heading 2', 2, 'Ctrl+Alt+2'], ['Heading 3', 3, 'Ctrl+Alt+3'],
-      ['Heading 4', 4, 'Ctrl+Alt+4'], ['Quote', 'quote', ''], ['Normal', 0, 'Ctrl+Shift+N'],
-    ];
-    for (const [name, style, keys] of styles) {
-      const it = gal.createDiv({ cls: 'onenote-style-item', text: name, attr: { 'data-style': String(style), 'aria-label': keys ? `${name} (${keys})` : name, 'data-tooltip-position': 'bottom' } });
-      it.onclick = () => this.edit((e) => mapLines(e, (l) => styleLine(l, style)));
-    }
-
-    // Tags gallery
-    g = this.group(el, 'Tags');
-    const tg = g.createDiv('onenote-tag-gallery');
-    for (const t of TAGS) {
-      const it = tg.createDiv({ cls: 'onenote-tag-item', attr: { 'aria-label': `${t.name} (Ctrl+${t.key})`, 'data-tooltip-position': 'bottom' } });
-      const ic = it.createSpan({ cls: 'onenote-tag-icon', attr: { 'data-tag': t.id } });
-      icon(ic, t.icon);
-      it.createSpan({ text: t.name });
-      it.onclick = () => this.edit((e) => mapLines(e, (l) => toggleTagLine(l, t.char)));
-    }
-    col = g.createDiv('onenote-col');
-    this.button(col, { icon: 'check-square', label: 'To Do Tag', tip: 'To Do Tag (Ctrl+1)', onClick: () => this.edit((e) => mapLines(e, (l) => toggleTagLine(l, ' '))) });
-    this.button(col, { icon: 'search-check', fallback: '⌕', label: 'Find Tags', tip: 'Find Tags', onClick: () => new TagSummaryModal(this.app, this).open() });
-
-    // Pages
-    g = this.group(el, 'Pages');
-    this.button(g, { icon: 'file-plus', label: 'New Page', big: true, tip: 'New Page', onClick: () => this.createPage() });
-    this.button(g, { icon: 'layout-dashboard', fallback: '▦', label: 'Add Canvas', big: true, tip: 'Add a free-form Canvas page', onClick: () => this.createPage({ canvas: true }) });
-    col = g.createDiv('onenote-col');
-    this.button(col, { icon: 'corner-down-right', label: 'New Subpage', tip: 'New Subpage (Ctrl+Shift+Alt+N)', onClick: () => this.createSubpage() });
-    this.button(col, { icon: 'indent', label: 'Make Subpage', tip: 'Make this page a subpage of another page (Ctrl+Alt+])', onClick: () => this.withActivePage((f) => this.setLevel(f, 1)) });
-    this.button(col, { icon: 'outdent', label: 'Promote', tip: 'Promote Subpage (Ctrl+Alt+[)', onClick: () => this.withActivePage((f) => this.setLevel(f, -1)) });
-
-    // AI: runs AI ChatBridge's syncs, all at once or one surface at a time
-    g = this.group(el, 'AI');
-    this.aiButtons = new Map();
-    this.aiStateKey = null;
-    this.aiButtons.set(AI_SYNC_ALL, this.button(g, { icon: 'refresh-cw', fallback: '⟳', label: AI_SYNC_ALL.label, big: true, cls: 'onenote-ai-btn', tip: AI_SYNC_ALL.tip, onClick: () => this.runAiSync(AI_SYNC_ALL) }));
-    for (const surfaces of AI_SURFACES) {
-      col = g.createDiv('onenote-col');
-      for (const s of surfaces) {
-        this.aiButtons.set(s, this.button(col, { icon: s.icon, label: s.label, cls: 'onenote-ai-btn', tip: s.tip, onClick: () => this.runAiSync(s) }));
+  // Runs the command behind a ribbon button.
+  runRibbonCommand(id) {
+    const ws = this.app.workspace;
+    let ok = executeCommand(this.app, id);
+    if (!ok) {
+      // Editing commands need a page. If a side pane has the focus, go back to the page
+      // that was used last and try once more.
+      const v = this.lastMarkdownView;
+      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.activeLeaf !== v.leaf) {
+        ws.setActiveLeaf(v.leaf, { focus: true });
+        ok = executeCommand(this.app, id);
       }
     }
-    this.updateAiState();
-
-    // Theme: Obsidian's own light/dark mode
-    g = this.group(el, 'Theme');
-    const dark = document.body.hasClass('theme-dark');
-    this.button(g, { icon: 'sun', fallback: '☀', label: 'Light', big: true, active: !dark, tip: 'Use light mode', onClick: () => this.setThemeMode(false) });
-    this.button(g, { icon: 'moon', fallback: '☾', label: 'Dark', big: true, active: dark, tip: 'Use dark mode', onClick: () => this.setThemeMode(true) });
-
-    // Settings
-    g = this.group(el, 'Settings');
-    this.button(g, { icon: 'settings', fallback: '⚙', label: 'Settings', big: true, tip: 'Open Obsidian settings (Ctrl+,)', onClick: () => this.openSettings() });
-    this.button(g, { icon: 'puzzle', fallback: '🧩', label: 'Plugins', big: true, tip: 'Open Community plugins', onClick: () => this.openSettings('community-plugins') });
-    this.button(g, { icon: 'message-square-text', fallback: '💬', label: 'ChatBridge', big: true, tip: 'Open AI ChatBridge settings', onClick: () => this.openAiSettings() });
+    if (!ok) new Notice('This command can\'t be used here right now.');
+    return ok;
   }
 
-  /* ---------- AI ChatBridge syncs ---------- */
+  // Where a picker should open: under the ribbon button that was just clicked, else at
+  // the top of the page (when the command came from the command palette or a hotkey).
+  pickerAnchor() {
+    const r = this.ribbon && this.ribbon.lastAnchor();
+    if (r) return r;
+    const v = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const box = (v ? v.contentEl : document.body).getBoundingClientRect();
+    return { left: box.left + 24, bottom: box.top + 24 };
+  }
+
+  choiceMenu(choices, key) {
+    const m = new Menu();
+    for (const c of choices) {
+      m.addItem((i) => i.setTitle(c.name).setChecked(this.settings[key] === c.id).onClick(() => this.setAppearance(key, c.id)));
+    }
+    const r = this.pickerAnchor();
+    m.showAtPosition({ x: r.left, y: r.bottom + 2 });
+  }
+
+  // Replaces the whole layout (import, reset, undo). The layout it replaces is kept so
+  // the last replacement can be undone.
+  replaceRibbonLayout(layout, keepPrevious) {
+    this.ribbonPrevious = keepPrevious === false ? null : this.ribbonLayout;
+    this.ribbonLayout = layout;
+    const tab = activeTab(layout, this.state.ribbonTab);
+    this.state.ribbonTab = tab ? tab.id : '';
+    this.ribbon.changed();
+  }
+
+  async exportRibbon() {
+    const name = `Ribbon layout ${moment().format('YYYY-MM-DD HHmmss')}.json`;
+    try {
+      await this.app.vault.create(normalizePath(name), exportLayout(this.ribbonLayout));
+      new Notice(`Ribbon layout saved in your vault as "${name}".`, 8000);
+      return name;
+    } catch (e) {
+      new Notice(`Could not save the ribbon layout: ${e && e.message ? e.message : e}`);
+      return null;
+    }
+  }
+
+  importRibbon() {
+    const input = createEl('input', { type: 'file', attr: { accept: '.json,application/json' } });
+    input.onchange = async () => {
+      const f = input.files && input.files[0];
+      if (f) this.importRibbonText(await f.text());
+    };
+    input.click();
+  }
+
+  importRibbonText(text) {
+    let layout;
+    try {
+      layout = importLayout(text);
+    } catch (e) {
+      new Notice(`The ribbon layout was not imported. ${e.message}`, 8000);
+      return false;
+    }
+    this.replaceRibbonLayout(layout);
+    new Notice('Ribbon layout imported. To go back, run the command "Ribbon: undo last import or reset".', 8000);
+    return true;
+  }
+
+  async resetRibbon() {
+    const ok = await this.confirm('Reset the ribbon', 'Replace all tabs, groups and buttons with the default layout? You can undo this once with the command "Ribbon: undo last import or reset".', 'Reset');
+    if (!ok) return false;
+    this.replaceRibbonLayout(defaultLayout());
+    return true;
+  }
+
+  undoRibbonReplace() {
+    if (!this.ribbonPrevious) {
+      new Notice('There is no earlier ribbon layout to go back to.');
+      return false;
+    }
+    const previous = this.ribbonPrevious;
+    this.replaceRibbonLayout(previous, false);
+    new Notice('The earlier ribbon layout is back.');
+    return true;
+  }
 
   openAiSettings() {
-    if (!this.aiPlugin()) {
+    if (!isPluginEnabled(this.app, AI_PLUGIN)) {
       new Notice('AI ChatBridge is not installed or not enabled.');
-      this.openSettings('community-plugins');
+      openSettings(this.app, 'community-plugins');
       return;
     }
-    this.openSettings(AI_PLUGIN);
-  }
-
-  aiPlugin() {
-    const plugins = this.app.plugins;
-    if (!plugins || !plugins.enabledPlugins || !plugins.enabledPlugins.has(AI_PLUGIN)) return null;
-    return plugins.plugins[AI_PLUGIN] || null;
-  }
-
-  aiBusy(p) {
-    return !!this.aiLocalRun || !!(p && p.busy);
-  }
-
-  // The accounts whose desktop app is turned on, or null if ChatBridge can't
-  // sync one provider's desktop app on its own (then its command is used).
-  aiDesktopAccounts(p, s) {
-    if (!p.settings || !Array.isArray(p.settings[s.desktop]) || typeof p.syncAccount !== 'function') return null;
-    return p.settings[s.desktop].filter((a) => a.desktop && a.desktop.enabled);
-  }
-
-  aiReady(p, s) {
-    if (!p) return false;
-    if (!s.desktop) return true;
-    const accounts = this.aiDesktopAccounts(p, s);
-    return !accounts || accounts.length > 0;
-  }
-
-  async runAiSync(s) {
-    const p = this.aiPlugin();
-    if (!p) {
-      new Notice('Install and enable AI ChatBridge to sync your AI chats.');
-      this.openSettings('community-plugins');
-      return;
-    }
-    if (this.aiBusy(p)) {
-      new Notice('A sync is already running. You can follow it in the status bar.');
-      return;
-    }
-    if (!this.aiReady(p, s)) {
-      new Notice(`${s.label} isn't turned on yet. Turn it on in AI ChatBridge, under Desktop app.`);
-      this.openSettings(AI_PLUGIN);
-      return;
-    }
-    this.aiSyncing = s.id;
-    const accounts = s.desktop ? this.aiDesktopAccounts(p, s) : null;
-    if (accounts) {
-      this.aiLocalRun = true;
-      this.updateAiState();
-      try {
-        for (const account of accounts) await p.syncAccount(s.desktop, account, 'desktop');
-      } catch (err) {
-        console.error('OneNote Style: AI sync failed', err);
-        new Notice(`${s.label} sync failed: ${err && err.message ? err.message : err}`);
-      } finally {
-        this.aiLocalRun = false;
-        this.updateAiState();
-      }
-      return;
-    }
-    if (!this.exec(`${AI_PLUGIN}:${s.command}`)) {
-      this.aiSyncing = null;
-      new Notice('This version of AI ChatBridge can\'t run that sync. Try updating the plugin.');
-    }
-    this.updateAiState();
-  }
-
-  // Runs every half second, so it only touches the buttons when something changed.
-  updateAiState() {
-    if (!this.aiButtons) return;
-    const p = this.aiPlugin();
-    const busy = this.aiBusy(p);
-    if (!busy) this.aiSyncing = null;
-    // A sync the buttons didn't start, such as the timed one, shows on Sync All.
-    const active = busy ? (this.aiSyncing || AI_SYNC_ALL.id) : null;
-    const ready = Array.from(this.aiButtons.keys()).map((s) => this.aiReady(p, s));
-    const key = [!!p, active, ready.join()].join('|');
-    if (key === this.aiStateKey) return;
-    this.aiStateKey = key;
-    let i = 0;
-    for (const [s, el] of this.aiButtons) {
-      const isReady = ready[i++];
-      const running = s.id === active;
-      el.toggleClass('is-syncing', running);
-      el.toggleClass('is-locked', busy && !running);
-      el.toggleClass('is-unavailable', !isReady);
-      el.setAttr('aria-busy', running ? 'true' : 'false');
-      let tip = s.tip;
-      if (running) tip = s === AI_SYNC_ALL ? 'Syncing your AI chats...' : `Syncing ${s.label}...`;
-      else if (busy) tip = 'A sync is running';
-      else if (!p) tip = 'Needs the AI ChatBridge plugin. Click to open Community plugins';
-      else if (!isReady) tip = `${s.label} isn't turned on. Click to open AI ChatBridge settings`;
-      el.setAttr('aria-label', tip);
-    }
-  }
-
-  openSettings(tabId) {
-    const setting = this.app.setting;
-    if (!setting) { this.exec('app:open-settings'); return; }
-    setting.open();
-    if (tabId && setting.openTabById) setting.openTabById(tabId);
-  }
-
-  setThemeMode(dark) {
-    // 'obsidian' is Obsidian's dark base theme, 'moonstone' its light one.
-    if (this.app.changeTheme) this.app.changeTheme(dark ? 'obsidian' : 'moonstone');
-    else if (document.body.hasClass('theme-dark') !== dark) this.exec('theme:toggle-light-dark');
-    // Let Obsidian swap the body theme class before redrawing the pressed state.
-    setTimeout(() => this.renderRibbon(), 50);
-  }
-
-  renderInsertTab(el) {
-    let g = this.group(el, 'Tables');
-    this.button(g, { icon: 'table', label: 'Table', big: true, dropdown: true, tip: 'Insert Table', onClick: (e, b) => this.tablePicker(b) });
-
-    g = this.group(el, 'Files');
-    this.button(g, { icon: 'paperclip', label: 'File', big: true, tip: 'Insert a file or picture', onClick: () => this.cmd('editor:attach-file', () => new Notice('Drag a file onto the page to attach it.')) });
-    let col = g.createDiv('onenote-col');
-    this.button(col, { icon: 'image', label: 'Picture', tip: 'Insert a picture', onClick: () => this.cmd('editor:attach-file') });
-    this.button(col, { icon: 'file-input', fallback: '⧉', label: 'Embed Page', tip: 'Embed another page', onClick: () => this.edit((e) => e.replaceSelection('![[')) });
-
-    g = this.group(el, 'Links');
-    this.button(g, { icon: 'link', label: 'Link', big: true, tip: 'Link (Ctrl+K)', onClick: () => this.cmd('editor:insert-link', (e) => wrap(e, '[', ']()')) });
-    this.button(g, { icon: 'file-symlink', fallback: '⇢', label: 'Page Link', big: true, tip: 'Link to a page', onClick: () => this.cmd('editor:insert-wikilink', (e) => wrap(e, '[[', ']]')) });
-
-    g = this.group(el, 'Time Stamp');
-    this.button(g, { icon: 'calendar', label: 'Date', big: true, tip: 'Insert Date (Alt+Shift+D)', onClick: () => this.stamp('date') });
-    this.button(g, { icon: 'clock', label: 'Time', big: true, tip: 'Insert Time (Alt+Shift+T)', onClick: () => this.stamp('time') });
-    this.button(g, { icon: 'calendar-clock', fallback: '⏱', label: 'Date & Time', big: true, tip: 'Insert Date & Time (Alt+Shift+F)', onClick: () => this.stamp('datetime') });
-
-    g = this.group(el, 'Blocks');
-    col = g.createDiv('onenote-col');
-    this.button(col, { icon: 'message-square', label: 'Callout', tip: 'Insert callout', onClick: () => this.cmd('editor:insert-callout', (e) => insertBlock(e, '> [!note]\n> ', 12)) });
-    this.button(col, { icon: 'code-2', fallback: '{}', label: 'Code Block', tip: 'Insert code block', onClick: () => this.cmd('editor:insert-codeblock', (e) => insertBlock(e, '```\n\n```', 4)) });
-    this.button(col, { icon: 'minus', label: 'Divider', tip: 'Insert horizontal line', onClick: () => this.edit((e) => insertBlock(e, '---')) });
-
-    g = this.group(el, 'Symbols');
-    this.button(g, { icon: 'sigma', label: 'Equation', big: true, tip: 'Insert math block', onClick: () => this.cmd('editor:insert-mathblock', (e) => insertBlock(e, '$$\n\n$$', 3)) });
-    this.button(g, { icon: 'omega', fallback: 'Ω', label: 'Symbol', big: true, dropdown: true, tip: 'Insert symbol', onClick: (e, b) => this.symbolPicker(b) });
-
-    g = this.group(el, 'Pages');
-    this.button(g, { icon: 'layout-dashboard', label: 'Free-form Page', big: true, tip: 'New free-form page (Obsidian Canvas)', onClick: () => this.createPage({ canvas: true }) });
-  }
-
-  renderViewTab(el) {
-    const ws = this.app.workspace;
-    const full = document.body.hasClass('onenote-fullpage');
-    let g = this.group(el, 'Views');
-    this.button(g, { icon: 'layout', fallback: '▭', label: 'Normal View', big: true, active: !full, onClick: () => { if (full) this.toggleFullPage(); } });
-    this.button(g, { icon: 'maximize-2', label: 'Full Page View', big: true, active: full, onClick: () => this.toggleFullPage() });
-    this.button(g, { icon: 'book-open-check', fallback: '👁', label: 'Read / Edit', big: true, tip: 'Toggle reading view (Ctrl+E)', onClick: () => this.exec('markdown:toggle-preview') });
-
-    g = this.group(el, 'Page Setup');
-    this.button(g, { icon: 'paint-bucket', label: 'Page Color', big: true, dropdown: true, onClick: (e, b) => this.pageColorPicker(b) });
-    this.button(g, { icon: 'align-justify', label: 'Rule Lines', big: true, dropdown: true, onClick: (e, b) => {
-      const m = new Menu();
-      for (const r of RULE_LINES) m.addItem((i) => i.setTitle(r.name).setChecked(this.settings.ruleLines === r.id).onClick(() => this.setAppearance('ruleLines', r.id)));
-      const rect = b.getBoundingClientRect();
-      m.showAtPosition({ x: rect.left, y: rect.bottom });
-    } });
-    this.button(g, { icon: 'move-horizontal', fallback: '↔', label: 'Page Width', big: true, dropdown: true, onClick: (e, b) => {
-      const m = new Menu();
-      for (const w of PAGE_WIDTHS) m.addItem((i) => i.setTitle(w.name).setChecked(this.settings.pageWidth === w.id).onClick(() => this.setAppearance('pageWidth', w.id)));
-      const rect = b.getBoundingClientRect();
-      m.showAtPosition({ x: rect.left, y: rect.bottom });
-    } });
-
-    g = this.group(el, 'Zoom');
-    this.button(g, { icon: 'zoom-out', label: 'Zoom Out', big: true, onClick: () => this.exec('window:zoom-out') });
-    this.button(g, { icon: 'zoom-in', label: 'Zoom In', big: true, onClick: () => this.exec('window:zoom-in') });
-    this.button(g, { icon: 'scan', fallback: '1:1', label: '100%', big: true, onClick: () => this.exec('window:reset-zoom') });
-
-    g = this.group(el, 'Window');
-    this.button(g, { icon: 'panel-left', label: 'Navigation', big: true, active: !ws.leftSplit.collapsed, tip: 'Show or hide the notebooks pane', onClick: () => this.togglePane(NOTEBOOKS_VIEW) });
-    this.button(g, { icon: 'panel-right', label: 'Page List', big: true, tip: 'Show or hide the page list', onClick: () => this.togglePane(PAGES_VIEW) });
-    this.button(g, { icon: 'folder-kanban', fallback: '▤', label: 'Section Tabs', big: true, active: this.settings.showSectionTabs, onClick: async () => {
-      this.settings.showSectionTabs = !this.settings.showSectionTabs;
-      await this.persist();
-      this.buildTopBar();
-    } });
+    openSettings(this.app, AI_PLUGIN);
   }
 
   renderSectionTabs() {
@@ -2020,7 +1865,7 @@ class OneNotePlugin extends Plugin {
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     pop.addEventListener('mousedown', (e) => e.preventDefault());
     build(pop, close);
-    const r = anchor ? anchor.getBoundingClientRect() : { left: pos.x, bottom: pos.y };
+    const r = !anchor ? { left: pos.x, bottom: pos.y } : anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     pop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
     pop.style.top = Math.min(r.bottom + 2, window.innerHeight - pop.offsetHeight - 8) + 'px';
     setTimeout(() => {

@@ -1,75 +1,109 @@
-# OneNote Style for Obsidian
+# OneNote Style
 
-An Obsidian plugin that makes Obsidian look and work like Microsoft OneNote.
+**The ribbon you already know, in Obsidian.**
 
-## What you get
+Tabs, groups and buttons across the top, like Word and OneNote. Click instead of remembering commands. Nothing to learn, nothing to set up: install it and start writing.
 
-| OneNote | In Obsidian |
-|---|---|
-| Notebooks pane | **Notebooks** view in the left sidebar: every top-level folder is a notebook, its folders are sections (nested folders work like section groups). |
-| Section tabs | Colored tabs above the page, plus a notebook switcher. Click **+** for a new section. Right-click a tab to rename it, change its color or delete it. |
-| Page list | **Pages** view (right sidebar like OneNote 2016, or left like newer OneNote). **Add Page**, drag and drop to reorder, subpages (two levels), drag a page onto a section to move it. |
-| Page title | Big title with a thin underline and the page's date and time under it. |
-| Note tags | To Do, Important ⭐, Question, Remember for later (yellow highlight), Definition (green highlight), Idea 💡, with a **Tags Summary** that lists every tagged line in the section, notebook or vault. |
+![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 
-Your notes stay plain Markdown. Tags are stored as task statuses (`- [!] Call the bank`, `- [?] Who owns this?`), which other Obsidian tools can read too. Page order, subpage levels and section colors are kept in the plugin's own `data.json`.
+## Why
 
-## Subpages
+Obsidian is powerful, and most of that power sits behind a command palette and hotkeys. If you come from Office, that is friction. OneNote Style removes it.
 
-A subpage is a plain note in the same folder as its parent page. No folder is created. The subpage names its parent in its own properties (`parent: "[[Parent page]]"`), so the notes stay pure Markdown and renaming the parent keeps them attached. There are two levels, like in OneNote.
+- **Familiar.** Home, Insert, View and nine more tabs, laid out the way Office taught you.
+- **Zero setup.** The default ribbon is filled and ready the moment you turn the plugin on.
+- **Any command, one click.** Every button runs an Obsidian command, including the commands of your other plugins.
+- **Yours.** Right-click or drag to change anything. No settings page needed.
+- **Never in the way.** It shrinks with the window like Office does, with no scroll bar, and follows your theme in light and dark.
 
-**New Subpage**, **Make Subpage** and **Promote** (Home → Pages) only set or remove that property. Subpages are indented and marked with a small "L" in Obsidian's file explorer, in Notebook Navigator and in the plugin's Pages list.
+## Just get started
 
-In Obsidian's file explorer and in the Pages list a subpage sits directly under its parent, and the sort order you choose applies within each level: Z-A sorts the pages Z-A and, under each page, its subpages Z-A. Notebook Navigator offers plugins no way to change the order of its list, so there a subpage is indented and marked but stays where Notebook Navigator's own sort puts it.
+1. Install **OneNote Style** and turn it on.
+2. Click a button.
 
-Pages made with an older version, where a parent page was a folder holding a note of the same name, can be turned back with the command **OneNote Style: Turn page folder into plain subpages**. It moves the notes up one level and leaves the emptied folder for you to delete.
+That's it. When you want to change something, right-click it.
 
-## The ribbon
+## See it
 
-An Office-style ribbon sits above the workspace: **tabs → groups → buttons**, with Undo/Redo and a search box in the tab row. It is a framework, not a fixed toolbar: every button runs an Obsidian command, so any command of Obsidian or of any installed plugin can be a button.
+**Make it yours with a right-click.** Rename a button, change its icon or colour, make it large or small, move it, remove it.
 
-**Buttons.** Each button is **large** (icon above label) or **small** (icon and label, stacked three high). A button whose plugin is missing or turned off stays in place, greyed out, with a tooltip that says why.
+![Right-click menu of a button](docs/screenshots/2-right-click-dark.png)
 
-**Customising, on the ribbon itself.**
+**Any command of any plugin.** Right-click a group, choose *Add command* and type, like in the command palette. Here: the sync commands of [AI ChatBridge](https://github.com/Sundowna/obsidian-ai-chatbridge).
+
+![Adding a command with the searchable picker](docs/screenshots/3-any-command-dark.png)
+
+**It adapts like Office.** Narrow the window and the groups shrink step by step: large, small, icon-only, then one drop-down per group. Never a horizontal scroll bar.
+
+![The ribbon in a narrow window with a group drop-down open](docs/screenshots/4-adaptive-light.png)
+
+**Customise mode.** Drag tabs, groups and buttons where you want them. The **+** tiles add new ones.
+
+![Customise mode with a button being dragged](docs/screenshots/5-customise-mode-dark.png)
+
+## What's in the ribbon
+
+Twelve tabs, ready to use: **Home, Insert, View, Table, Navigate, Templates, Canvas, References, Review, Data, Slides, Utilities.**
+
+They use the commands of Obsidian and its core plugins, this plugin's own commands and, if you have them, AI ChatBridge, Editing Toolbar, Excalidraw, Tasks, Omnisearch and Notebook Navigator. A button whose plugin you don't have stays in place, greyed out, and its tooltip says why. Remove it or leave it.
+
+## Make it yours
 
 | Right-click | You can |
 |---|---|
-| a button | rename it, change its icon or icon colour, make it large or small, move it left or right, move it to another group, remove it |
-| a group (its label) | add a command (searchable, like the command palette), rename, move left or right, choose when it shrinks, add a group, delete |
-| a tab or an empty area | add, rename, hide, show, move or delete tabs, add a group, export or import the layout, reset to default |
+| a button | rename it, change its icon or icon colour, make it large or small, move it, move it to another group, remove it |
+| a group label | add a command, rename, move, choose when it shrinks, add a group, delete |
+| a tab or an empty area | add, rename, hide, show, move or delete tabs, export or import the layout, reset to default |
 
-Drag a button to move it, also into another group or (hover over a tab) onto another tab. For bigger changes choose **Customise with drag and drop** from the right-click menu: tabs and groups can then be dragged too, **+** tiles add tabs, groups and buttons, and a click on a button opens its menu. **Done** or Esc ends it.
+- **Drag a button** to move it, also into another group. Hover over a tab while dragging to drop it on another tab.
+- **Customise with drag and drop** (in the right-click menu) lets you drag tabs and groups too and shows **+** tiles for new tabs, groups and buttons. **Done** or Esc ends it.
+- **Large or small.** Each button is large (icon above label) or small (icon and label, stacked three high).
+- **Shrink first, normally or last.** Per group you choose what gives way when the window gets narrow. What still doesn't fit goes into **More** at the right end.
+- **Colours.** Icons use your theme's palette, adjusted for light and dark so they stay readable. Product logos keep their brand colour.
+- **One file.** *Export layout* saves the whole ribbon as one JSON file in your vault; *Import layout* reads it back. An import or reset can be undone once.
 
-**It adapts to the window, like Office.** There is never a horizontal scroll bar. When space runs out the groups shrink step by step: large → small → icon-only → the group becomes one drop-down button → what still doesn't fit goes into **More** at the right end. Per group you choose **Shrink first / normally / last**. Tabs that don't fit move into a drop-down as well.
+## OneNote extras
 
-**Look.** The ribbon uses Obsidian's theme variables, so it follows light and dark mode and any theme. Icon colours come from the theme's palette and are adjusted per mode to stay readable; product logos keep their brand colour.
+The ribbon is the main thing. These come with it:
 
-**Layout file.** *Export layout* writes one JSON file (`Ribbon layout <date>.json`) to the vault's top folder; *Import layout* reads such a file. An import or reset can be undone once with the command **Ribbon: undo last import or reset**. The plugin's settings page has the same export, import and reset buttons as a backup.
+- **Note tags.** To Do, Important, Question, Remember for later, Definition and Idea, with a **Tags Summary** across the section, notebook or vault. They are stored as task statuses (`- [!] Call the bank`), so your notes stay plain Markdown.
+- **Subpages without folders.** A subpage is a plain note next to its parent that names the parent in a property (`parent: "[[Parent page]]"`). In Obsidian's file explorer it sits under its parent, indented, with a small "L", and your sort order applies within each level.
+- **Page title with date**, page colours, rule lines, page width, date and time stamps, a table grid picker and a symbol picker.
+- **OneNote keyboard shortcuts** (Ctrl+1 for To Do, Ctrl+Alt+1 for Heading 1 and so on). Off by default; turn them on in the plugin's settings.
+- **Notebooks, section tabs and a page list** like OneNote. Off by default; turn them on in the plugin's settings.
 
-### Default tabs
+## Part of a second brain
 
-Home, Insert, View (with zoom), Table, Navigate, Templates, Canvas, References, Review, Data, Slides, Utilities. They use commands of Obsidian and its core plugins, this plugin's own commands, and, where installed, AI ChatBridge, Editing Toolbar, Excalidraw, Tasks, Omnisearch and Notebook Navigator. Buttons of plugins you don't have are greyed out; remove them or leave them.
+OneNote Style is one piece of a "second brain" built on Obsidian. The idea: your knowledge lives in plain Markdown that you own, and the tools around it feel like the ones you already use.
 
-Also in the default layout: the six OneNote **note tags** and **Find Tags**, **New Page / Subpage**, **AI** (AI ChatBridge: Sync All, Stop All, one button per service), **Appearance** (light / dark), table grid picker, date and time stamps, symbols, page colour, rule lines and page width.
+| Piece | What it does |
+|---|---|
+| **OneNote Style** (this plugin) | The familiar ribbon and OneNote's way of working |
+| [**AI ChatBridge**](https://github.com/Sundowna/obsidian-ai-chatbridge) | Brings your chats from Claude, ChatGPT, Gemini and others into the vault. Its sync commands are in the ribbon's **AI** group |
+| [**OneNote Style theme**](https://github.com/Sundowna/obsidian-onenote-theme) | OneNote's look: white pages, Calibri, OneNote's heading styles |
+
+Each works on its own. Together they make Obsidian feel like home.
 
 ## Install
 
-1. Copy `manifest.json`, `main.js` and `styles.css` into
-   `<your vault>/.obsidian/plugins/onenote-style/` (create the folders if needed).
-2. In Obsidian: **Settings → Community plugins** → turn off Restricted mode if needed → enable **OneNote Style**.
-3. For the page date under the title, keep **Settings → Appearance → Show inline title** on.
+**From Obsidian:** **Settings → Community plugins → Browse**, search for **OneNote Style**, then **Install** and **Enable**.
 
-On first start the plugin opens the Notebooks and Pages panes. If you close them, use the book icon in Obsidian's left ribbon or the **OneNote Style: Show notebooks and pages panes** command.
+**By hand:** copy `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Sundowna/obsidian-onenote-style/releases/latest) into `<your vault>/.obsidian/plugins/onenote-style/`, then enable **OneNote Style** under **Settings → Community plugins**.
 
-### Using an existing vault
+Needs Obsidian 1.10.6 or newer, on desktop.
 
-* **Top-level folders are notebooks** (default): `Work/Meetings/Standup.md` is the page *Standup* in section *Meetings* of notebook *Work*. Notes sitting directly in a notebook folder show up as an **Unfiled** section.
-* **The vault is one notebook**: switch this in the plugin settings if your vault is one big collection of folders.
-* Use **Excluded folders** in settings to hide folders such as `Attachments` or `Templates`.
+## Good to know
 
-## Keyboard shortcuts
+- **It restyles a little.** By default the plugin sets a purple accent colour, Segoe UI and Calibri. To keep your own look, turn off **OneNote theme** in the plugin's settings. The ribbon itself always follows your theme.
+- **Obsidian's own ribbon stays.** The icon strip on the left and Obsidian's menus are not touched.
+- **Collapse the ribbon** with a double-click on a tab or the small arrow at its right end.
+- **Subpages in Notebook Navigator** are indented and marked, but that plugin keeps its own sort order.
+- **Pages made with version 1.x** that turned a parent page into a folder can be converted back with the command **Turn page folder into plain subpages**.
+- **Not possible in Markdown:** OneNote's click-anywhere canvas. For that, **Insert → Canvas Page** creates an Obsidian Canvas. Ink, audio recording and OneNote import are not included.
 
-These match OneNote's. You can change any of them in **Settings → Hotkeys** (search for "OneNote Style").
+### OneNote keyboard shortcuts
+
+After you turn them on in settings (and reload Obsidian). Change any of them under **Settings → Hotkeys**.
 
 | Keys | Action |
 |---|---|
@@ -83,30 +117,23 @@ These match OneNote's. You can change any of them in **Settings → Hotkeys** (s
 | Ctrl+Shift+Alt+N | New subpage |
 | Ctrl+Alt+] / Ctrl+Alt+[ | Make subpage / promote subpage |
 | Alt+PageDown / Alt+PageUp | Next / previous page |
-| Ctrl+F1 | Collapse or expand the ribbon (or double-click a tab) |
+| Ctrl+F1 | Collapse or expand the ribbon |
 
-**New page**, **New section**, **New notebook** and **Full page view** have no default key because OneNote's keys for them (Ctrl+N, Ctrl+T, F11) are already used by Obsidian. Assign them in **Settings → Hotkeys** if you want OneNote's behavior.
+If Ctrl+1 … Ctrl+6 switch tabs instead of tagging, Obsidian has them bound to "Go to tab". Remove those bindings under **Settings → Hotkeys** (search "tab #").
 
-If Ctrl+1 … Ctrl+6 switch tabs instead of tagging, your Obsidian version binds them to "Go to tab". Remove those bindings in **Settings → Hotkeys** (search "tab #").
+### Notebooks and sections
 
-## What it can't do
-
-OneNote's free-form canvas, where you click anywhere to type, isn't possible in Markdown notes. For that kind of page, use **Insert → Free-form Page**, which creates an Obsidian Canvas page in the current section. Ink drawing, audio recording and OneNote file import aren't included.
-
-The plugin is desktop-only for now. The ribbon itself avoids Node and Electron APIs so that mobile can follow.
+With the Notebooks and Pages panes turned on, every top-level folder is a notebook, its folders are sections and the notes are pages (`Work/Meetings/Standup.md` is the page *Standup* in section *Meetings* of notebook *Work*). You can also treat the whole vault as one notebook, and hide folders such as `Attachments` with **Excluded folders**.
 
 ## Privacy
 
-No network calls, no telemetry. The plugin reads and writes only its own `data.json`, the notes you edit with it, and the layout file you export.
-
-## Theme
-
-For the same look without the ribbon and panes, see the [OneNote Style theme](https://github.com/Sundowna/obsidian-onenote-theme).
+No network calls, no telemetry, no account. The plugin reads and writes only its own `data.json`, the notes you edit with it, and the layout file you export.
 
 ## For developers
 
 ```
-src/main.js              the plugin (notebooks, pages, tags, commands, settings)
+src/main.js              the plugin (commands, note tags, subpages, panes, settings)
+src/subpages.js          subpage ordering (pure, unit-tested)
 src/ribbon/model.js      ribbon layout: tabs, groups, buttons (pure, unit-tested)
 src/ribbon/collapse.js   adaptive sizing decisions (pure, unit-tested)
 src/ribbon/defaults.js   the default layout
@@ -121,13 +148,13 @@ src/ribbon/internal.js   the only file that uses Obsidian internals, with the re
 |---|---|
 | `npm install` | installs the build and test tools |
 | `npm run build` | bundles `src/` into `main.js` |
-| `npm test` | unit tests for the layout model and the collapse logic |
+| `npm test` | unit tests for the layout model, the collapse logic and subpage ordering |
 | `npm run test:e2e` | end-to-end tests in a sandboxed Obsidian (downloaded once into `.obsidian-cache`) |
 
-The end-to-end tests never open a real vault. `test/e2e/prepare-vault.mjs` builds a throw-away vault from fixture notes plus the configuration (theme, snippets, a few offline plugins) of the vault named in `RIBBON_TEST_VAULT`. Screenshots land in `test/e2e/out/shots`.
+The end-to-end tests never open a real vault. `test/e2e/prepare-vault.mjs` builds a throw-away vault from fixture notes plus the configuration (theme, snippets, a few offline plugins) of the vault named in `RIBBON_TEST_VAULT`. The README screenshots come from `test/e2e/tools/showcase.e2e.mjs`, which runs on a demo vault with the default theme.
 
 ## License
 
 [MIT](LICENSE).
 
-OneNote is a trademark of Microsoft. Claude, ChatGPT, Codex and Lumo are trademarks of their owners, and their logos are used only to label the sync buttons. This plugin isn't made by or affiliated with any of them.
+OneNote, Word and Office are trademarks of Microsoft. Claude, ChatGPT, Codex, Gemini and Lumo are trademarks of their owners, and their logos are used only to label the sync buttons. This plugin isn't made by or affiliated with any of them.

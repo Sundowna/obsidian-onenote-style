@@ -29,8 +29,10 @@ export class CommandPickerModal extends FuzzySuggestModal {
   }
 
   renderSuggestion(match, el) {
-    super.renderSuggestion(match, el);
     el.addClass('onr-picker-item');
+    // The name goes in its own box: the highlighted letters of a match are separate
+    // elements and must not be spread out by the row's layout.
+    super.renderSuggestion(match, el.createDiv('onr-picker-name'));
     el.createSpan({ cls: 'onr-picker-id', text: match.item.id });
   }
 

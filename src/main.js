@@ -112,6 +112,7 @@ const DEFAULT_SETTINGS = {
   showNavigation: false, // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
   showPageDate: true,
   hideObsidianRibbon: false,
+  oneNoteHotkeys: false, // OneNote's keyboard shortcuts are opt-in (Obsidian's guideline: no default hotkeys)
   pageFont: 'Calibri, Carlito, "Segoe UI", sans-serif',
   uiFont: '"Segoe UI", system-ui, sans-serif',
   fontSize: 15,
@@ -613,7 +614,7 @@ class OneNoteSettingTab extends PluginSettingTab {
       p.refresh();
     };
 
-    el.createEl('h3', { text: 'Notebooks' });
+    new Setting(el).setName('Notebooks').setHeading();
     new Setting(el).setName('Notebook structure')
       .setDesc('How vault folders map to OneNote notebooks and sections.')
       .addDropdown((d) => d
@@ -625,7 +626,7 @@ class OneNoteSettingTab extends PluginSettingTab {
       .setDesc('Comma-separated folder paths to hide from notebooks and sections (e.g. attachments, templates).')
       .addText((t) => t.setValue(s.excludedFolders).onChange(async (v) => { s.excludedFolders = v; await changed(); }));
     new Setting(el).setName('Own notebook and page panes')
-      .setDesc('Off: Fluent OneNote and Notebook Navigator handle navigation, and this plugin only provides the ribbon and tags.')
+      .setDesc('Adds a Notebooks pane and a Pages pane like OneNote. Off: the plugin provides the ribbon, note tags and subpages, and your usual file list stays in charge.')
       .addToggle((t) => t.setValue(s.showNavigation).onChange(async (v) => { s.showNavigation = v; await p.persist(); await p.activatePanes(v); }));
     new Setting(el).setName('Page list position')
       .setDesc('OneNote 2016 shows pages on the right; newer OneNote shows them on the left under the notebooks.')
@@ -637,10 +638,10 @@ class OneNoteSettingTab extends PluginSettingTab {
         .onChange(async (v) => { s.pagesPanePosition = v; await p.persist(); await p.activatePanes(true); }))
       .addButton((b) => b.setButtonText('Reset panes').onClick(() => p.resetPanes()));
 
-    el.createEl('h3', { text: 'Look' });
+    new Setting(el).setName('Look').setHeading();
     new Setting(el).setName('OneNote theme').setDesc('Purple accents, Segoe UI, OneNote-style page title and tag icons.')
       .addToggle((t) => t.setValue(s.applyTheme).onChange(async (v) => { s.applyTheme = v; await changed(); }));
-    new Setting(el).setName('Show ribbon').setDesc('Home / Insert / View toolbar across the top.')
+    new Setting(el).setName('Show ribbon').setDesc('The Office-style ribbon across the top.')
       .addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => { s.showRibbon = v; await changed(true); }));
     new Setting(el).setName('Show section tabs').setDesc('Colored section tabs above the page.')
       .addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => { s.showSectionTabs = v; await changed(true); }));
@@ -671,7 +672,7 @@ class OneNoteSettingTab extends PluginSettingTab {
         d.setValue(s.pageWidth).onChange(async (v) => { s.pageWidth = v; await changed(); });
       });
 
-    el.createEl('h3', { text: 'Pages' });
+    new Setting(el).setName('Pages').setHeading();
     new Setting(el).setName('New page name')
       .addText((t) => t.setValue(s.newPageName).onChange(async (v) => { s.newPageName = v.trim() || 'Untitled Page'; await changed(); }));
     new Setting(el).setName('Date format').setDesc('Moment.js format for the page date and Insert › Date.')
@@ -681,7 +682,12 @@ class OneNoteSettingTab extends PluginSettingTab {
       .addMomentFormat((m) => m.setValue(s.timeFormat).setDefaultFormat(DEFAULT_SETTINGS.timeFormat)
         .onChange(async (v) => { s.timeFormat = v || DEFAULT_SETTINGS.timeFormat; await changed(); }));
 
-    el.createEl('h3', { text: 'Ribbon layout' });
+    new Setting(el).setName('Keyboard').setHeading();
+    new Setting(el).setName('OneNote keyboard shortcuts')
+      .setDesc('Ctrl+1 to Ctrl+6 for note tags, Ctrl+Alt+1 to 6 for headings, Alt+Shift+D for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.')
+      .addToggle((t) => t.setValue(s.oneNoteHotkeys).onChange(async (v) => { s.oneNoteHotkeys = v; await p.persist(); }));
+
+    new Setting(el).setName('Ribbon layout').setHeading();
     el.createEl('p', {
       cls: 'setting-item-description',
       text: 'You customise the ribbon on the ribbon itself: right-click a button, a group, a tab or an empty area, or drag buttons between groups. The buttons below are only a backup.',
@@ -704,6 +710,8 @@ class OneNotePlugin extends Plugin {
     for (const name of Object.keys(BRAND_ICONS)) addIcon(name, BRAND_ICONS[name]);
     const data = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
+    // Installs from before 2.0 had the OneNote shortcuts built in: keep them on there.
+    if (data.settings && data.settings.oneNoteHotkeys === undefined) this.settings.oneNoteHotkeys = true;
     this.state = Object.assign({}, DEFAULT_STATE, data.state);
     for (const k of MAP_KEYS) this.state[k] = Object.assign({}, this.state[k]);
     this.ribbonLayout = this.loadRibbonLayout(data.ribbon);
@@ -1568,7 +1576,7 @@ class OneNotePlugin extends Plugin {
         ws.setActiveLeaf(v.leaf, { focus: true });
         ae = v;
       }
-    } else if (ae instanceof MarkdownView && ws.activeLeaf !== ae.leaf) {
+    } else if (ae instanceof MarkdownView && ws.getActiveViewOfType(MarkdownView) !== ae) {
       ws.setActiveLeaf(ae.leaf, { focus: true });
     }
     if (!ae || !ae.editor) { new Notice('Open a page to use this.'); return; }
@@ -1615,7 +1623,7 @@ class OneNotePlugin extends Plugin {
 
   registerCommands() {
     const ed = (id, name, fn, hotkeys) => this.addCommand({ id, name, editorCallback: (e) => fn(e), hotkeys });
-    const key = (mods, k) => [{ modifiers: mods, key: k }];
+    const key = (mods, k) => (this.settings.oneNoteHotkeys ? [{ modifiers: mods, key: k }] : undefined);
 
     for (const t of TAGS) {
       ed(`tag-${t.id}`, `Tag: ${t.name}`, (e) => mapLines(e, (l) => toggleTagLine(l, t.char)), key(['Mod'], t.key));
@@ -1790,7 +1798,7 @@ class OneNotePlugin extends Plugin {
       // Editing commands need a page. If a side pane has the focus, go back to the page
       // that was used last and try once more.
       const v = this.lastMarkdownView;
-      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.activeLeaf !== v.leaf) {
+      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.getActiveViewOfType(MarkdownView) !== v) {
         ws.setActiveLeaf(v.leaf, { focus: true });
         ok = executeCommand(this.app, id);
       }

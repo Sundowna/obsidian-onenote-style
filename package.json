@@ -9,7 +9,7 @@
     "build": "node esbuild.config.mjs",
     "test": "node --test test/unit/",
     "test:e2e": "npm run build && wdio run ./wdio.conf.mjs",
-    "shots": "npm run build && wdio run ./wdio.conf.mjs --spec ./test/e2e/screenshots.e2e.mjs"
+    "shots": "npm run build && wdio run ./wdio.conf.mjs --spec ./test/e2e/tools/showcase.e2e.mjs"
   },
   "devDependencies": {
     "@wdio/cli": "^10.2.0",

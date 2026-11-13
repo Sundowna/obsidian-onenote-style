@@ -538,8 +538,8 @@ var CommandPickerModal = class extends import_obsidian.FuzzySuggestModal {
     return cmd.name;
   }
   renderSuggestion(match, el) {
-    super.renderSuggestion(match, el);
     el.addClass("onr-picker-item");
+    super.renderSuggestion(match, el.createDiv("onr-picker-name"));
     el.createSpan({ cls: "onr-picker-id", text: match.item.id });
   }
   onChooseItem(cmd) {
@@ -2018,6 +2018,8 @@ var DEFAULT_SETTINGS = {
   // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
   showPageDate: true,
   hideObsidianRibbon: false,
+  oneNoteHotkeys: false,
+  // OneNote's keyboard shortcuts are opt-in (Obsidian's guideline: no default hotkeys)
   pageFont: 'Calibri, Carlito, "Segoe UI", sans-serif',
   uiFont: '"Segoe UI", system-ui, sans-serif',
   fontSize: 15,
@@ -2499,7 +2501,7 @@ var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
       if (rebuild) p.buildTopBar();
       p.refresh();
     };
-    el.createEl("h3", { text: "Notebooks" });
+    new import_obsidian3.Setting(el).setName("Notebooks").setHeading();
     new import_obsidian3.Setting(el).setName("Notebook structure").setDesc("How vault folders map to OneNote notebooks and sections.").addDropdown((d) => d.addOption("folders", "Top-level folders are notebooks, subfolders are sections").addOption("vault", "The vault is one notebook, folders are sections").setValue(s.notebookMode).onChange(async (v) => {
       s.notebookMode = v;
       await changed();
@@ -2509,7 +2511,7 @@ var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
       s.excludedFolders = v;
       await changed();
     }));
-    new import_obsidian3.Setting(el).setName("Own notebook and page panes").setDesc("Off: Fluent OneNote and Notebook Navigator handle navigation, and this plugin only provides the ribbon and tags.").addToggle((t) => t.setValue(s.showNavigation).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Own notebook and page panes").setDesc("Adds a Notebooks pane and a Pages pane like OneNote. Off: the plugin provides the ribbon, note tags and subpages, and your usual file list stays in charge.").addToggle((t) => t.setValue(s.showNavigation).onChange(async (v) => {
       s.showNavigation = v;
       await p.persist();
       await p.activatePanes(v);
@@ -2519,12 +2521,12 @@ var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
       await p.persist();
       await p.activatePanes(true);
     })).addButton((b) => b.setButtonText("Reset panes").onClick(() => p.resetPanes()));
-    el.createEl("h3", { text: "Look" });
+    new import_obsidian3.Setting(el).setName("Look").setHeading();
     new import_obsidian3.Setting(el).setName("OneNote theme").setDesc("Purple accents, Segoe UI, OneNote-style page title and tag icons.").addToggle((t) => t.setValue(s.applyTheme).onChange(async (v) => {
       s.applyTheme = v;
       await changed();
     }));
-    new import_obsidian3.Setting(el).setName("Show ribbon").setDesc("Home / Insert / View toolbar across the top.").addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => {
+    new import_obsidian3.Setting(el).setName("Show ribbon").setDesc("The Office-style ribbon across the top.").addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => {
       s.showRibbon = v;
       await changed(true);
     }));
@@ -2573,7 +2575,7 @@ var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
         await changed();
       });
     });
-    el.createEl("h3", { text: "Pages" });
+    new import_obsidian3.Setting(el).setName("Pages").setHeading();
     new import_obsidian3.Setting(el).setName("New page name").addText((t) => t.setValue(s.newPageName).onChange(async (v) => {
       s.newPageName = v.trim() || "Untitled Page";
       await changed();
@@ -2586,7 +2588,12 @@ var OneNoteSettingTab = class extends import_obsidian3.PluginSettingTab {
       s.timeFormat = v || DEFAULT_SETTINGS.timeFormat;
       await changed();
     }));
-    el.createEl("h3", { text: "Ribbon layout" });
+    new import_obsidian3.Setting(el).setName("Keyboard").setHeading();
+    new import_obsidian3.Setting(el).setName("OneNote keyboard shortcuts").setDesc("Ctrl+1 to Ctrl+6 for note tags, Ctrl+Alt+1 to 6 for headings, Alt+Shift+D for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.").addToggle((t) => t.setValue(s.oneNoteHotkeys).onChange(async (v) => {
+      s.oneNoteHotkeys = v;
+      await p.persist();
+    }));
+    new import_obsidian3.Setting(el).setName("Ribbon layout").setHeading();
     el.createEl("p", {
       cls: "setting-item-description",
       text: "You customise the ribbon on the ribbon itself: right-click a button, a group, a tab or an empty area, or drag buttons between groups. The buttons below are only a backup."
@@ -2600,6 +2607,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     for (const name of Object.keys(BRAND_ICONS)) (0, import_obsidian3.addIcon)(name, BRAND_ICONS[name]);
     const data = await this.loadData() || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
+    if (data.settings && data.settings.oneNoteHotkeys === void 0) this.settings.oneNoteHotkeys = true;
     this.state = Object.assign({}, DEFAULT_STATE, data.state);
     for (const k of MAP_KEYS) this.state[k] = Object.assign({}, this.state[k]);
     this.ribbonLayout = this.loadRibbonLayout(data.ribbon);
@@ -3415,7 +3423,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
         ws.setActiveLeaf(v.leaf, { focus: true });
         ae = v;
       }
-    } else if (ae instanceof import_obsidian3.MarkdownView && ws.activeLeaf !== ae.leaf) {
+    } else if (ae instanceof import_obsidian3.MarkdownView && ws.getActiveViewOfType(import_obsidian3.MarkdownView) !== ae) {
       ws.setActiveLeaf(ae.leaf, { focus: true });
     }
     if (!ae || !ae.editor) {
@@ -3461,7 +3469,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
   }
   registerCommands() {
     const ed = (id, name, fn, hotkeys) => this.addCommand({ id, name, editorCallback: (e) => fn(e), hotkeys });
-    const key = (mods, k) => [{ modifiers: mods, key: k }];
+    const key = (mods, k) => this.settings.oneNoteHotkeys ? [{ modifiers: mods, key: k }] : void 0;
     for (const t of TAGS) {
       ed(`tag-${t.id}`, `Tag: ${t.name}`, (e) => mapLines(e, (l) => toggleTagLine(l, t.char)), key(["Mod"], t.key));
     }
@@ -3618,7 +3626,7 @@ var OneNotePlugin = class extends import_obsidian3.Plugin {
     let ok = executeCommand(this.app, id);
     if (!ok) {
       const v = this.lastMarkdownView;
-      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.activeLeaf !== v.leaf) {
+      if (v && v.leaf && v.leaf.view === v && v.containerEl.isConnected && ws.getActiveViewOfType(import_obsidian3.MarkdownView) !== v) {
         ws.setActiveLeaf(v.leaf, { focus: true });
         ok = executeCommand(this.app, id);
       }

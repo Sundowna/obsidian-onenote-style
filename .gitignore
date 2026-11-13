@@ -9,3 +9,4 @@ node_modules/
 test/e2e/out/
 test/e2e/.vault-tmp/
 *.log
+test/e2e/.showcase-vault/

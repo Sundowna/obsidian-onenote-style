@@ -12,7 +12,8 @@ export const config = {
   maxInstances: 1,
   capabilities: [{
     browserName: 'obsidian',
-    browserVersion: 'latest',
+    // OBSIDIAN_VERSION=1.8.10 runs the suite on an older Obsidian (to check minAppVersion)
+    browserVersion: process.env.OBSIDIAN_VERSION || 'latest',
     'wdio:obsidianOptions': {
       installerVersion: 'latest',
       plugins: ['.'],

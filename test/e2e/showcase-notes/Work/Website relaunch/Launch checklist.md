@@ -1,0 +1,3 @@
+- [ ] Redirects tested
+- [ ] Analytics in place
+- [ ] Press note ready

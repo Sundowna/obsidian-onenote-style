@@ -607,6 +607,7 @@ body > button.onr-btn.onr-ghost {
 /* ---------- Pickers (add command, change icon) ---------- */
 
 .onr-picker-item { display: flex; align-items: center; gap: 10px; }
+.onr-picker-name { flex: 1 1 auto; min-width: 0; }
 .onr-picker-id { margin-left: auto; padding-left: 12px; font-size: var(--font-ui-smaller); color: var(--text-faint); white-space: nowrap; }
 .onr-icon-item-icon { display: inline-flex; }
 .onr-icon-item-icon svg { width: 18px; height: 18px; }

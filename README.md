@@ -1,8 +1,10 @@
 # OneNote Style
 
-**The ribbon you already know, in your Obsidian vault.** OneNote Style puts Office-style **tabs**, **groups** and **buttons** above your notes - **Home**, **Insert**, **View** and nine more tabs, filled and ready - so you click instead of remembering commands. Any command of Obsidian or of your other plugins can be a button, and a right-click changes anything. Note tags and subpages come along too.
+**The ribbon you already know, in your Obsidian vault.** OneNote Style puts Office-style **tabs**, **groups** and **buttons** above your notes - **Home**, **Insert**, **View** and nine more tabs, filled and ready - so you click instead of remembering commands. Any command of Obsidian or of your other plugins can be a button, and a right-click changes anything. Note tags, subpages and OneNote-like editing come along too.
 
 **Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of Karpathy's LLM wiki. The other pieces: [AI ChatBridge](https://community.obsidian.md/plugins/ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://community.obsidian.md/themes/onenote-style) (the look you already know).
+
+**New in 2.1:** [edit like in OneNote and Word](#onenote-extras) - no Markdown syntax while you type, and a **Quick Bar** for selected text. See the [releases](https://github.com/Sundowna/obsidian-onenote-style/releases) for everything else.
 
 ![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 
@@ -66,8 +68,10 @@ They use the commands of Obsidian and its core plugins, this plugin's own comman
 
 The ribbon is the main thing. These come with it:
 
-- **No Markdown syntax while you type.** Like OneNote and Word, you see the formatted text and never the markers (`**`, `#`, `>`, `[[ ]]`, link addresses, `<mark>` tags), not even on the line the cursor is in. Bullets, checkboxes, tags and code fences stay. The arrow keys step over the hidden markers, and Backspace never eats one by accident. **Syntax Guard:** a note that opens in Source mode switches to Live Preview; the **Source Mode** button still shows the Markdown when you want it, until you open another note. Syntax Guard has its own switch in the settings, the command **Toggle Syntax Guard** and a button in the Editing group. Turn it off and on with the command **Toggle syntax visibility**, the **Syntax** button in the **Editing** group on the Home tab or in the settings.
-- **Quick Bar.** Select text and a small toolbar appears above it: bold, italic, strikethrough, highlight in seven colours, **No colour**, internal link, copy and clear formatting. Every button toggles, and the selection stays, so you can apply several in a row. Coloured highlights are written as `<mark style="background: #FFF3A3A6;">text</mark>`, the same format as the Highlightr plugin. Turn it off and on with the command **Toggle Quick Bar** or its button in the Editing group.
+- **No Markdown syntax while you type.** Like OneNote and Word, you see the formatted text and never the markers (`**`, `#`, `>`, `[[ ]]`, link addresses, `<mark>` tags), not even on the line the cursor is in. Bullets, checkboxes, tags and code fences stay. The arrow keys step over the hidden markers, and Backspace never eats one by accident.
+- **Syntax Guard.** While syntax is hidden, a note that opens in Source mode switches to Live Preview. The **Source Mode** button still shows the Markdown when you want it, until you open another note.
+- **Quick Bar.** Select text and a small toolbar appears above it: bold, italic, strikethrough, highlight in seven colours, **No colour**, internal link, copy and clear formatting. Every button toggles, and the selection stays, so you can apply several in a row. Coloured highlights are written as `<mark style="background: #FFF3A3A6;">text</mark>`, the same format as the Highlightr plugin.
+- **All three are on by default.** Turn each off and on with its button in the **Editing** group on the Home tab (**Syntax**, **Syntax Guard**, **Quick Bar**), its command (**Toggle syntax visibility**, **Toggle Syntax Guard**, **Toggle Quick Bar**) or its switch under **Settings → OneNote Style → Editing**.
 - **Note tags.** To Do, Important, Question, Remember for later, Definition and Idea, with a **Tags Summary** across the section, notebook or vault. They are stored as task statuses (`- [!] Call the bank`), so your notes stay plain Markdown.
 - **Subpages without folders.** A subpage is a plain note next to its parent that names the parent in a property (`parent: "[[Parent page]]"`). In Obsidian's file explorer it sits under its parent, indented, with a small "L", and your sort order applies within each level.
 - **Page title with date**, page colours, rule lines, page width, date and time stamps, a table grid picker and a symbol picker.
@@ -81,7 +85,7 @@ This is one of three pieces of the **Sundowna Second Brain Suite (SSBS)**. Toget
 | Piece | Kind | What it does | Get it |
 |---|---|---|---|
 | [**AI ChatBridge**](https://github.com/Sundowna/obsidian-ai-chatbridge) | Plugin | Brings your chats from Claude, ChatGPT, Gemini and others into the vault as Markdown | [Obsidian community](https://community.obsidian.md/plugins/ai-chatbridge) |
-| **OneNote Style** (you are here) | Plugin | The ribbon you already know: Office-style tabs, groups and buttons for any command, plus note tags and subpages. Its **AI** group runs AI ChatBridge's sync commands with one click | [Obsidian community](https://community.obsidian.md/plugins/onenote-style) |
+| **OneNote Style** (you are here) | Plugin | The ribbon you already know: Office-style tabs, groups and buttons for any command, plus note tags, subpages and editing without Markdown syntax. Its **AI** group runs AI ChatBridge's sync commands with one click | [Obsidian community](https://community.obsidian.md/plugins/onenote-style) |
 | [**OneNote Style theme**](https://github.com/Sundowna/obsidian-onenote-theme) | Theme | OneNote's look: white pages, Calibri, OneNote's heading styles, light and dark | [Obsidian community](https://community.obsidian.md/themes/onenote-style) |
 
 Each works on its own. Together they are low friction from the first minute.

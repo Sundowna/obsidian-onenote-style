@@ -49,7 +49,8 @@ export function prepareVault() {
       const d = JSON.parse(fs.readFileSync(data, 'utf8'));
       delete d.ribbon;
       if (d.state) for (const k of ['order', 'levels', 'lastPage', 'lastSection', 'expanded', 'colors']) d.state[k] = {};
-      if (d.state) { d.state.notebook = ''; d.state.section = ''; }
+      // The tests expect the ribbon open, whatever it is in the Test vault right now.
+      if (d.state) { d.state.notebook = ''; d.state.section = ''; d.state.ribbonCollapsed = false; }
       fs.mkdirSync(path.join(dst, 'plugins', 'onenote-style'), { recursive: true });
       fs.writeFileSync(path.join(dst, 'plugins', 'onenote-style', 'data.json'), JSON.stringify(d, null, 2));
     }

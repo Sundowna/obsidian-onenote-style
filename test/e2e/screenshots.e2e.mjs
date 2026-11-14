@@ -45,7 +45,7 @@ describe('screenshots', () => {
       await setDark(dark);
       await setSize(960, 1040);
       await selectTab('home');
-      const collapsed = await browser.$('.onr-strip .onr-group.is-collapsed .onr-group-button');
+      const collapsed = browser.$$('.onr-strip .onr-group.is-collapsed .onr-group-button')[0]; // the first of the collapsed groups
       if (await collapsed.isExisting()) {
         await collapsed.click();
         await pause(250);

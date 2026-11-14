@@ -48,7 +48,7 @@ describe('ribbon', () => {
       const s = await ribbonState();
       expect(s.tabs).toEqual(['Home', 'Insert', 'View', 'Table', 'Navigate', 'Templates', 'Canvas', 'References', 'Review', 'Data', 'Slides', 'Utilities']);
       expect(s.active).toBe('Home');
-      expect(s.groups.length).toBe(8);
+      expect(s.groups.length).toBe(9);
       expect(s.groups.every((g) => g.level === 0)).toBe(true);
       const order = await browser.execute(() => {
         const bar = document.querySelector('.onenote-topbar');
@@ -153,7 +153,7 @@ describe('ribbon', () => {
       await pause(200);
       const notice = await browser.execute(() => Array.from(document.querySelectorAll('.notice')).map((n) => n.textContent).join(' | '));
       expect(notice).toMatch(/not available/i);
-      expect((await ribbonState()).groups.length).toBe(8);
+      expect((await ribbonState()).groups.length).toBe(9);
     });
 
     it('greys a button out when its plugin is turned off, and brings it back when turned on', async () => {
@@ -475,7 +475,7 @@ describe('ribbon', () => {
     it('shrinks step by step and ends with a "more" drop-down', async () => {
       const seen = { small: false, icons: false, collapsed: false, more: false };
       let prev = -1;
-      for (const w of [1920, 1700, 1500, 1366, 1200, 1100, 960, 840, 720, 600, 480, 400]) {
+      for (const w of [1920, 1860, 1800, 1700, 1500, 1366, 1200, 1100, 960, 840, 720, 600, 480, 400]) {
         await setSize(w, 1040);
         const s = await ribbonState();
         const levels = s.groups.map((g) => g.level);
@@ -483,7 +483,7 @@ describe('ribbon', () => {
         if (levels.includes(2)) seen.icons = true;
         if (levels.includes(3)) seen.collapsed = true;
         if (s.more) seen.more = true;
-        const score = levels.reduce((a, b) => a + b, 0) + (8 - s.groups.length) * 4;
+        const score = levels.reduce((a, b) => a + b, 0) + (9 - s.groups.length) * 4;
         expect(score).toBeGreaterThanOrEqual(prev);
         prev = score;
       }

@@ -76,7 +76,8 @@ describe('commands of other plugins', () => {
   it('AI ChatBridge: buttons wake up when the plugin is turned on, and its commands can be added', async () => {
     const installed = await withPlugin((plugin, app) => !!app.plugins.manifests['ai-chatbridge']);
     if (!installed) return; // the Test vault has no AI ChatBridge to copy
-    const syncAll = '.onenote-ribbon .onr-group[data-group="home-ai"] .onr-btn.is-large[data-item]:first-child';
+    // By its id, not its size: the group may shrink once a ninth button is added to it.
+    const syncAll = `.onenote-ribbon [data-item="${(await itemsOf('home-ai'))[0].id}"]`;
     expect(await browser.$(syncAll).getAttribute('aria-disabled')).toBe('true');
     await withPlugin((plugin, app) => app.plugins.enablePluginAndSave('ai-chatbridge'));
     try {

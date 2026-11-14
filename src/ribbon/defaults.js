@@ -20,6 +20,14 @@ const S = (command, label, icon, color) => ({ command, label, icon, size: 'small
 const G = (id, name, items, priority) => ({ id, name, priority: priority || 'normal', items });
 const T = (id, name, groups) => ({ id, name, groups });
 
+// Hidden syntax, Syntax Guard and the Quick Bar. Kept apart so it can also be added to
+// a layout that was saved before these commands existed (see addEditingGroup).
+const EDITING = G('home-editing', 'Editing', [
+  S(O + 'toggle-syntax-visibility', 'Syntax', 'eye-off'),
+  S(O + 'toggle-syntax-guard', 'Syntax Guard', 'shield-check', 'green'),
+  S(O + 'toggle-quick-bar', 'Quick Bar', 'highlighter', 'yellow'),
+], 'last'); // shrinks last, so its three buttons keep their labels in a narrow window
+
 const TABS = [
   T('home', 'Home', [
     G('home-clipboard', 'Clipboard', [
@@ -69,6 +77,7 @@ const TABS = [
       S(O + 'make-subpage', 'Make Subpage', 'indent'),
       S(O + 'promote-subpage', 'Promote', 'outdent'),
     ]),
+    EDITING,
     G('home-ai', 'AI', [
       L('ai-chatbridge:sync-all-chats', 'Sync All', 'refresh-cw'),
       L('ai-chatbridge:stop-sync', 'Stop All', 'square', 'red'),
@@ -407,6 +416,23 @@ const TABS = [
     ], 'first'),
   ]),
 ];
+
+/**
+ * Adds the Editing group to a saved layout that has none of its commands yet: on the
+ * Home tab after Pages, else at the end of the first tab. Returns true when it was added.
+ */
+export function addEditingGroup(layout) {
+  const wanted = new Set(EDITING.items.map((i) => i.command));
+  if (!layout.tabs.length) return false;
+  if (layout.tabs.some((t) => t.groups.some((g) => g.items.some((i) => wanted.has(i.command))))) return false;
+  const tab = layout.tabs.find((t) => t.id === 'home') || layout.tabs.find((t) => !t.hidden) || layout.tabs[0];
+  const group = JSON.parse(JSON.stringify(EDITING));
+  const at = tab.groups.findIndex((g) => g.id === 'home-pages');
+  tab.groups.splice(at >= 0 ? at + 1 : tab.groups.length, 0, group);
+  // normalizeLayout gives the new group and buttons their ids
+  layout.tabs = normalizeLayout(layout).tabs;
+  return true;
+}
 
 export function defaultLayout() {
   return normalizeLayout({ tabs: JSON.parse(JSON.stringify(TABS)) });

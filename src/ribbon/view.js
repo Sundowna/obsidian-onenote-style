@@ -78,6 +78,30 @@ export class RibbonView {
     });
     this.observer.observe(topBar);
     this.render();
+    this.awaitStyles();
+  }
+
+  /**
+   * When the plugin is turned on (or updated) while Obsidian is running, its stylesheet
+   * arrives a moment after the ribbon is drawn. Widths measured without it are far too
+   * wide and every group would end up in "More", so measure again once it is there.
+   */
+  awaitStyles() {
+    window.clearInterval(this.styleTimer);
+    const styled = () => {
+      const probe = this.topBar.createDiv('onr-strip');
+      const ok = getComputedStyle(probe).display === 'flex';
+      probe.remove();
+      return ok;
+    };
+    if (styled()) return;
+    let tries = 0;
+    this.styleTimer = window.setInterval(() => {
+      if (!this.topBar || ++tries > 200) { window.clearInterval(this.styleTimer); return; }
+      if (!styled()) return;
+      window.clearInterval(this.styleTimer);
+      this.remeasure();
+    }, 50);
   }
 
   unmount() {
@@ -87,6 +111,7 @@ export class RibbonView {
     this.editing = false;
     if (this.observer) this.observer.disconnect();
     this.observer = null;
+    window.clearInterval(this.styleTimer);
     if (this.topBar) {
       this.topBar.removeEventListener('click', this.onClick);
       this.topBar.removeEventListener('contextmenu', this.onContextMenu);

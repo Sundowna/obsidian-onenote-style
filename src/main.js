@@ -15,10 +15,13 @@ import {
   TFile, TFolder, FuzzySuggestModal, setIcon, addIcon, moment, normalizePath, debounce,
 } from 'obsidian';
 import { RibbonView } from './ribbon/view.js';
-import { defaultLayout } from './ribbon/defaults.js';
+import { defaultLayout, addEditingGroup } from './ribbon/defaults.js';
 import { normalizeLayout, exportLayout, importLayout, activeTab } from './ribbon/model.js';
 import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode, patchExplorerSort, resortExplorers } from './ribbon/internal.js';
 import { groupUnderParents } from './subpages.js';
+import { hideSyntax } from './syntax.js';
+import { QuickBar } from './quickbar.js';
+import { editSelection, clearFormatting, plainText } from './selection-format.js';
 
 const NOTEBOOKS_VIEW = 'onenote-notebooks';
 const PAGES_VIEW = 'onenote-pages';
@@ -112,6 +115,9 @@ const DEFAULT_SETTINGS = {
   showNavigation: false, // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
   showPageDate: true,
   hideObsidianRibbon: false,
+  hideSyntax: true, // Live Preview never shows Markdown syntax, not even on the cursor line
+  syntaxGuard: true, // with hidden syntax: notes that open in Source mode switch to Live Preview
+  quickBar: true, // floating toolbar above selected text
   oneNoteHotkeys: false, // OneNote's keyboard shortcuts are opt-in (Obsidian's guideline: no default hotkeys)
   pageFont: 'Calibri, Carlito, "Segoe UI", sans-serif',
   uiFont: '"Segoe UI", system-ui, sans-serif',
@@ -222,13 +228,6 @@ function wrap(editor, before, after) {
   editor.replaceSelection(before + sel + after);
   const endCh = to.line === from.line ? to.ch + before.length : to.ch;
   editor.setSelection({ line: from.line, ch: from.ch + before.length }, { line: to.line, ch: endCh });
-}
-
-function clearFormatting(s) {
-  return s
-    .replace(/<\/?(?:u|sub|sup|mark|span|font|b|i|s|strong|em)\b[^>]*>/gi, '')
-    .replace(/(\*\*|__|~~|==)/g, '')
-    .replace(/(?<![\w*\\])[*_](\S(?:[^\n]*?\S)?)[*_](?![\w*])/g, '$1');
 }
 
 function insertBlock(editor, text, cursorOffset) {
@@ -672,6 +671,17 @@ class OneNoteSettingTab extends PluginSettingTab {
         d.setValue(s.pageWidth).onChange(async (v) => { s.pageWidth = v; await changed(); });
       });
 
+    new Setting(el).setName('Editing').setHeading();
+    new Setting(el).setName('Hide Markdown syntax')
+      .setDesc('Like OneNote and Word: you see the formatted text, never the markers (**, #, >, [[ ]], link addresses), not even on the line you are typing in. Bullets and checkboxes stay. Applies to Live Preview. Also the command "Toggle syntax visibility".')
+      .addToggle((t) => t.setValue(s.hideSyntax).onChange((v) => p.setHideSyntax(v)));
+    new Setting(el).setName('Syntax Guard')
+      .setDesc('While syntax is hidden, a note that opens in Source mode switches to Live Preview, so you never land in raw Markdown by accident. The Source Mode button still shows the Markdown when you want it, until you open another note.')
+      .addToggle((t) => t.setValue(s.syntaxGuard).onChange(async (v) => { s.syntaxGuard = v; await p.persist(); }));
+    new Setting(el).setName('Quick Bar')
+      .setDesc('A small toolbar above selected text: bold, italic, strikethrough, highlight colours, link, copy, clear formatting. Also the command "Toggle Quick Bar".')
+      .addToggle((t) => t.setValue(s.quickBar).onChange((v) => p.setQuickBar(v)));
+
     new Setting(el).setName('Pages').setHeading();
     new Setting(el).setName('New page name')
       .addText((t) => t.setValue(s.newPageName).onChange(async (v) => { s.newPageName = v.trim() || 'Untitled Page'; await changed(); }));
@@ -724,6 +734,19 @@ class OneNotePlugin extends Plugin {
     this.popover = null;
     this.requestRefresh = debounce(() => this.refresh(), 60, true);
     this.save = debounce(() => this.persist(), 400, true);
+    // One-time: a ribbon saved before the Editing group existed gets it added.
+    if (!this.state.editingGroupAdded) {
+      this.state.editingGroupAdded = true;
+      addEditingGroup(this.ribbonLayout);
+      this.save();
+    }
+    // One-time: the group was first added as "shrinks normally", which left three bare
+    // icons in a window narrower than about 1700px.
+    if (!this.state.editingGroupLabelled) {
+      this.state.editingGroupLabelled = true;
+      for (const t of this.ribbonLayout.tabs) for (const g of t.groups) if (g.id === 'home-editing' && g.priority === 'normal') g.priority = 'last';
+      this.save();
+    }
 
     this.registerView(NOTEBOOKS_VIEW, (leaf) => new NotebooksView(leaf, this));
     this.registerView(PAGES_VIEW, (leaf) => new PagesView(leaf, this));
@@ -731,6 +754,13 @@ class OneNotePlugin extends Plugin {
     if (this.settings.showNavigation) this.addRibbonIcon('book-open', 'OneNote: show notebooks and pages', () => this.activatePanes(true));
     this.registerCommands();
     this.applyAppearance();
+    // The array is filled or emptied by applyHideSyntax; Obsidian re-reads it on updateOptions().
+    this.syntaxGuarded = new WeakMap(); // tab -> the note in it that syntaxGuard has checked
+    this.syntaxExtension = [];
+    this.registerEditorExtension(this.syntaxExtension);
+    this.applyHideSyntax();
+    this.quickBar = new QuickBar(this);
+    this.quickBar.mount();
 
     this.app.workspace.onLayoutReady(async () => {
       this.buildTopBar();
@@ -738,9 +768,13 @@ class OneNotePlugin extends Plugin {
       this.registerEvent(vault.on('create', () => this.requestRefresh()));
       this.registerEvent(vault.on('delete', () => this.requestRefresh()));
       this.registerEvent(vault.on('rename', (file, oldPath) => this.onRename(file, oldPath)));
-      this.registerEvent(workspace.on('file-open', (file) => this.onFileOpen(file)));
+      this.registerEvent(workspace.on('file-open', (file) => {
+        this.onFileOpen(file);
+        this.syntaxGuard(workspace.getActiveViewOfType(MarkdownView));
+      }));
       this.registerEvent(workspace.on('active-leaf-change', (leaf) => {
         if (leaf && leaf.view instanceof MarkdownView) this.lastMarkdownView = leaf.view;
+        if (leaf) this.syntaxGuard(leaf.view);
         this.decoratePageHeaders();
       }));
       this.registerEvent(workspace.on('layout-change', () => { this.decoratePageHeaders(); this.patchExplorer(); }));
@@ -751,6 +785,7 @@ class OneNotePlugin extends Plugin {
       this.watchSidebars();
       const mv = workspace.getActiveViewOfType(MarkdownView);
       if (mv) this.lastMarkdownView = mv;
+      this.syntaxGuard(mv);
       if (!this.state.navHandedOff) {
         // One-time switch: Fluent OneNote and Notebook Navigator now do navigation.
         this.settings.showNavigation = false;
@@ -778,6 +813,7 @@ class OneNotePlugin extends Plugin {
 
   onunload() {
     this.closePopover();
+    if (this.quickBar) this.quickBar.unmount();
     if (this.ribbon) this.ribbon.unmount();
     if (this.topBar) this.topBar.remove();
     const b = document.body;
@@ -1405,6 +1441,49 @@ class OneNotePlugin extends Plugin {
     this.applyAppearance();
   }
 
+  /* ---------- editing: hidden syntax, Quick Bar ---------- */
+
+  applyHideSyntax() {
+    const on = !!this.settings.hideSyntax;
+    document.body.toggleClass('onenote-hide-syntax', on);
+    this.syntaxExtension.length = 0;
+    if (on) this.syntaxExtension.push(hideSyntax);
+    this.app.workspace.updateOptions();
+  }
+
+  async setHideSyntax(on) {
+    this.settings.hideSyntax = !!on;
+    this.applyHideSyntax();
+    // Hiding only shows in Live Preview, so turning it on brings the open note there.
+    if (on) this.syntaxGuard(this.app.workspace.getActiveViewOfType(MarkdownView), true);
+    await this.persist();
+  }
+
+  /**
+   * Syntax guard: while syntax is hidden, a note that opens in Source mode switches to
+   * Live Preview.
+   * Each note is checked once when it is opened in a tab, so switching to Source mode
+   * yourself (the Source Mode button) still works and stays until you open another note.
+   */
+  syntaxGuard(view, force) {
+    const s = this.settings;
+    if (!s.hideSyntax || !s.syntaxGuard || !(view instanceof MarkdownView) || !view.file) return;
+    const leaf = view.leaf;
+    if (!force && this.syntaxGuarded.get(leaf) === view.file.path) return;
+    this.syntaxGuarded.set(leaf, view.file.path);
+    const st = leaf.getViewState();
+    if (st.state && st.state.mode === 'source' && st.state.source === true) {
+      st.state.source = false;
+      leaf.setViewState(st);
+    }
+  }
+
+  async setQuickBar(on) {
+    this.settings.quickBar = !!on;
+    if (!on) this.quickBar.hide();
+    await this.persist();
+  }
+
   decoratePageHeaders() {
     const show = this.settings.showPageDate;
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -1686,6 +1765,20 @@ class OneNotePlugin extends Plugin {
     run('use-dark-mode', 'Use dark mode', () => setDarkMode(this.app, true, document));
     run('open-community-plugins', 'Open Community plugins', () => openSettings(this.app, 'community-plugins'));
     run('open-ai-chatbridge-settings', 'Open AI ChatBridge settings', () => this.openAiSettings());
+    run('toggle-syntax-visibility', 'Toggle syntax visibility', async () => {
+      await this.setHideSyntax(!this.settings.hideSyntax);
+      new Notice(this.settings.hideSyntax ? 'Markdown syntax hidden' : 'Markdown syntax visible');
+    });
+    run('toggle-syntax-guard', 'Toggle Syntax Guard', async () => {
+      this.settings.syntaxGuard = !this.settings.syntaxGuard;
+      if (this.settings.syntaxGuard) this.syntaxGuard(this.app.workspace.getActiveViewOfType(MarkdownView), true);
+      await this.persist();
+      new Notice(this.settings.syntaxGuard ? 'Syntax Guard on' : 'Syntax Guard off');
+    });
+    run('toggle-quick-bar', 'Toggle Quick Bar', async () => {
+      await this.setQuickBar(!this.settings.quickBar);
+      new Notice(this.settings.quickBar ? 'Quick Bar on' : 'Quick Bar off');
+    });
     run('toggle-section-tabs', 'Show or hide section tabs', async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -1704,8 +1797,9 @@ class OneNotePlugin extends Plugin {
   }
 
   clearFormat(e) {
-    if (e.getSelection()) e.replaceSelection(clearFormatting(e.getSelection()));
-    else mapLines(e, (l) => clearFormatting(styleLine(l, 0)));
+    // With a selection: also the markers just outside it (hidden syntax leaves them there).
+    if (e.getSelection()) editSelection(e, clearFormatting);
+    else mapLines(e, (l) => plainText(styleLine(l, 0)));
   }
 
   /* ---------- top bar: tab row, ribbon, section tabs ---------- */

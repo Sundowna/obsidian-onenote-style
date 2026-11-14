@@ -2,7 +2,7 @@
 
 **The ribbon you already know, in your Obsidian vault.** OneNote Style puts Office-style **tabs**, **groups** and **buttons** above your notes - **Home**, **Insert**, **View** and nine more tabs, filled and ready - so you click instead of remembering commands. Any command of Obsidian or of your other plugins can be a button, and a right-click changes anything. Note tags and subpages come along too.
 
-**Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The other pieces: [AI ChatBridge](https://github.com/Sundowna/obsidian-ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://github.com/Sundowna/obsidian-onenote-theme) (the look you already know).
+**Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of Karpathy's LLM wiki. The other pieces: [AI ChatBridge](https://community.obsidian.md/plugins/ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://community.obsidian.md/themes/onenote-style) (the look you already know).
 
 ![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 
@@ -66,6 +66,8 @@ They use the commands of Obsidian and its core plugins, this plugin's own comman
 
 The ribbon is the main thing. These come with it:
 
+- **No Markdown syntax while you type.** Like OneNote and Word, you see the formatted text and never the markers (`**`, `#`, `>`, `[[ ]]`, link addresses, `<mark>` tags), not even on the line the cursor is in. Bullets, checkboxes, tags and code fences stay. The arrow keys step over the hidden markers, and Backspace never eats one by accident. **Syntax Guard:** a note that opens in Source mode switches to Live Preview; the **Source Mode** button still shows the Markdown when you want it, until you open another note. Syntax Guard has its own switch in the settings, the command **Toggle Syntax Guard** and a button in the Editing group. Turn it off and on with the command **Toggle syntax visibility**, the **Syntax** button in the **Editing** group on the Home tab or in the settings.
+- **Quick Bar.** Select text and a small toolbar appears above it: bold, italic, strikethrough, highlight in seven colours, **No colour**, internal link, copy and clear formatting. Every button toggles, and the selection stays, so you can apply several in a row. Coloured highlights are written as `<mark style="background: #FFF3A3A6;">text</mark>`, the same format as the Highlightr plugin. Turn it off and on with the command **Toggle Quick Bar** or its button in the Editing group.
 - **Note tags.** To Do, Important, Question, Remember for later, Definition and Idea, with a **Tags Summary** across the section, notebook or vault. They are stored as task statuses (`- [!] Call the bank`), so your notes stay plain Markdown.
 - **Subpages without folders.** A subpage is a plain note next to its parent that names the parent in a property (`parent: "[[Parent page]]"`). In Obsidian's file explorer it sits under its parent, indented, with a small "L", and your sort order applies within each level.
 - **Page title with date**, page colours, rule lines, page width, date and time stamps, a table grid picker and a symbol picker.
@@ -134,6 +136,10 @@ No network calls, no telemetry, no account. The plugin reads and writes only its
 ```
 src/main.js              the plugin (commands, note tags, subpages, panes, settings)
 src/subpages.js          subpage ordering (pure, unit-tested)
+src/syntax.js            hides Markdown syntax in Live Preview (editor extension)
+src/syntax-rules.js      which tokens count as syntax (pure, unit-tested)
+src/quickbar.js          the Quick Bar; its buttons are the list QUICK_BAR_ACTIONS, its colours HIGHLIGHTS
+src/selection-format.js  toggling formatting on the selection (pure, unit-tested)
 src/ribbon/model.js      ribbon layout: tabs, groups, buttons (pure, unit-tested)
 src/ribbon/collapse.js   adaptive sizing decisions (pure, unit-tested)
 src/ribbon/defaults.js   the default layout
@@ -148,7 +154,7 @@ src/ribbon/internal.js   the only file that uses Obsidian internals, with the re
 |---|---|
 | `npm install` | installs the build and test tools |
 | `npm run build` | bundles `src/` into `main.js` |
-| `npm test` | unit tests for the layout model, the collapse logic and subpage ordering |
+| `npm test` | unit tests for the layout model, the collapse logic, subpage ordering and the editing rules |
 | `npm run test:e2e` | end-to-end tests in a sandboxed Obsidian (downloaded once into `.obsidian-cache`) |
 
 The end-to-end tests never open a real vault. `test/e2e/prepare-vault.mjs` builds a throw-away vault from fixture notes plus the configuration (theme, snippets, a few offline plugins) of the vault named in `RIBBON_TEST_VAULT`. The README screenshots come from `test/e2e/tools/showcase.e2e.mjs`, which runs on a demo vault with the default theme.

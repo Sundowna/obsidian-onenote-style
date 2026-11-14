@@ -1,7 +1,7 @@
 {
   "id": "onenote-style",
   "name": "OneNote Style",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "minAppVersion": "1.10.6",
   "description": "The ribbon you already know: Office-style tabs, groups and buttons for any command, customised by right-click and drag and drop. Plus OneNote-style note tags, subpages, notebooks and section tabs.",
   "author": "Sundowna",

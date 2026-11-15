@@ -49,6 +49,8 @@ Twelve tabs, ready to use: **Home, Insert, View, Table, Navigate, Templates, Can
 
 They use the commands of Obsidian and its core plugins, this plugin's own commands and, if you have them, AI ChatBridge, Editing Toolbar, Excalidraw, Tasks, Omnisearch and Notebook Navigator. A button whose plugin you don't have stays in place, greyed out, and its tooltip says why. Remove it or leave it.
 
+**Buttons show what is on.** A button whose mode is on stays pressed, like the ¶ button in Word: Light or Dark, reading view, Source Mode, hidden syntax, Syntax Guard, Quick Bar, line numbers, line width, spelling, the sidebars, section tabs, stacked tabs, a pinned tab. While AI ChatBridge syncs, the Sync All icon turns and the icon of the chat app being synced pulses.
+
 ## Make it yours
 
 | Right-click | You can |

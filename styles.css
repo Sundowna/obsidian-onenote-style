@@ -390,6 +390,29 @@ body.onenote-fullpage .onenote-section-tabs { display: none; }
 :is(.onenote-topbar, .onr-popover) button.onr-btn.is-open { background: var(--onenote-pressed); }
 :is(.onenote-topbar, .onr-popover) button.onr-btn:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
 
+/* Pressed: the button's mode is on (reading view, dark mode, hidden syntax), as in Office.
+   Only colours change, so a pressed button is exactly as wide as a normal one. */
+:is(.onenote-topbar, .onr-popover) button.onr-btn.is-pressed {
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+}
+:is(.onenote-topbar, .onr-popover) button.onr-btn.is-pressed:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 26%, transparent);
+}
+
+/* Busy: a sync is running. Large icons turn, small ones (the product logos) pulse. */
+:is(.onenote-topbar, .onr-popover) button.onr-btn.is-busy {
+  background: var(--onenote-pressed);
+  cursor: progress;
+}
+.onr-btn.is-busy .onr-btn-icon svg { animation: onr-pulse 1.1s ease-in-out infinite; }
+.onr-btn.is-busy.is-large:not(.onr-more-button) .onr-btn-icon svg { animation: onr-spin 1.1s linear infinite; }
+@keyframes onr-spin { to { transform: rotate(360deg); } }
+@keyframes onr-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .onr-btn.is-busy .onr-btn-icon svg { animation: none !important; }
+}
+
 .onr-btn-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-color, var(--text-muted)); }
 .onr-btn:hover .onr-btn-icon:not([data-color]) { color: var(--icon-color-hover, var(--text-normal)); }
 

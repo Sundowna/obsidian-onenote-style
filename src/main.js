@@ -17,7 +17,8 @@ import {
 import { RibbonView } from './ribbon/view.js';
 import { defaultLayout, addEditingGroup } from './ribbon/defaults.js';
 import { normalizeLayout, exportLayout, importLayout, activeTab } from './ribbon/model.js';
-import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode, patchExplorerSort, resortExplorers } from './ribbon/internal.js';
+import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode, patchExplorerSort, resortExplorers, readToggleContext, readSyncState } from './ribbon/internal.js';
+import { isSyncCommand, syncingCommands } from './ribbon/state.js';
 import { groupUnderParents } from './subpages.js';
 import { hideSyntax } from './syntax.js';
 import { QuickBar } from './quickbar.js';
@@ -729,6 +730,10 @@ class OneNotePlugin extends Plugin {
     this.ribbon = new RibbonView(this);
     // Greys buttons out (or brings them back) when a plugin is turned off or on.
     this.registerInterval(window.setInterval(() => this.ribbon.tick(), 1500));
+    // Keeps pressed and busy buttons in step with modes changed by hotkey, in the settings
+    // or by another plugin, and with AI ChatBridge's syncs, including its timed ones.
+    this.aiStarted = null; // { id, time }: the sync command last run from the ribbon
+    this.registerInterval(window.setInterval(() => this.ribbon.refreshStates(), 400));
 
     this.lastMarkdownView = null;
     this.popover = null;
@@ -1898,7 +1903,26 @@ class OneNotePlugin extends Plugin {
       }
     }
     if (!ok) new Notice('This command can\'t be used here right now.');
+    if (ok && isSyncCommand(id)) {
+      // Remember which button started the sync, unless one was running already.
+      const sync = readSyncState(this.app, AI_PLUGIN);
+      if (!sync || !sync.busy) this.aiStarted = { id, time: Date.now() };
+    }
+    // Show the new state at once, and again shortly after for commands that finish later.
+    this.ribbon.refreshStates();
+    window.setTimeout(() => this.ribbon.refreshStates(), 150);
     return ok;
+  }
+
+  // What the ribbon's buttons show: `ctx` for pressed buttons, `busy` for running syncs.
+  ribbonButtonState() {
+    const ctx = readToggleContext(this.app, document, MarkdownView);
+    ctx.settings = this.settings;
+    const sync = readSyncState(this.app, AI_PLUGIN);
+    const busy = !!sync && sync.busy;
+    // A sync starts a moment after its command, so the starter is kept for a few seconds.
+    if (this.aiStarted && !busy && Date.now() - this.aiStarted.time > 3000) this.aiStarted = null;
+    return { ctx, busy: syncingCommands(sync, this.aiStarted ? this.aiStarted.id : '') };
   }
 
   // Where a picker should open: under the ribbon button that was just clicked, else at

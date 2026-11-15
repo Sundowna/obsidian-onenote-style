@@ -29,6 +29,11 @@
  *       the sorted rows of a folder; it is wrapped so subpages follow their parent page.
  *       Sorting plugins use the same method. If it disappears, the explorer simply
  *       keeps its normal order.
+ *   app.vault.getConfig(key), tab group .isStacked, split .collapsed
+ *       Only to show a toggle button as pressed (line numbers, stacked tabs, sidebars).
+ *       If one moves, that button simply shows no state.
+ *   AI ChatBridge plugin: .syncing / .busy, .current
+ *       Only to animate the sync buttons while a sync runs.
  *   app.changeTheme(name)
  *       Light / dark buttons. Falls back to the official "theme:toggle-light-dark" command.
  */
@@ -190,6 +195,74 @@ export function isPluginEnabled(app, id) {
     return !!(app.plugins && app.plugins.enabledPlugins && app.plugins.enabledPlugins.has(id) && app.plugins.plugins[id]);
   } catch (e) {
     return false;
+  }
+}
+
+/**
+ * The state of everything a ribbon button can show as "on" (see state.js). Each value is
+ * true / false, or null when it can't be read, so its button just shows no state.
+ * `MarkdownView` is passed in so this file doesn't need the obsidian module.
+ */
+export function readToggleContext(app, doc, MarkdownView) {
+  const soft = (fn) => {
+    try {
+      const v = fn();
+      return v === undefined ? null : v;
+    } catch (e) {
+      return null;
+    }
+  };
+  const bool = (fn) => {
+    const v = soft(fn);
+    return v === null ? null : !!v;
+  };
+  const ws = app.workspace;
+  const view = soft(() => ws.getActiveViewOfType(MarkdownView));
+  const leaf = soft(() => (view ? view.leaf : ws.getMostRecentLeaf()));
+  const viewState = soft(() => (view ? view.leaf.getViewState() : null));
+  const st = (viewState && viewState.state) || {};
+  // Obsidian's own settings (app.json). getConfig is not in the official API.
+  const config = (key, fallback) => bool(() => {
+    const v = app.vault.getConfig(key);
+    return v === undefined || v === null ? fallback : v;
+  });
+  return {
+    dark: doc.body.classList.contains('theme-dark'),
+    fullPage: doc.body.classList.contains('onenote-fullpage'),
+    // 'preview' (reading), 'source' (raw Markdown), 'live' (Live Preview) or null (no page)
+    mode: view ? (st.mode === 'preview' ? 'preview' : st.source === true ? 'source' : 'live') : null,
+    backlinks: view ? !!st.backlinks : null,
+    pinned: leaf ? bool(() => !!leaf.getViewState().pinned) : null,
+    stacked: leaf ? bool(() => !!(leaf.parent && leaf.parent.isStacked)) : null,
+    readableLineLength: config('readableLineLength', true),
+    lineNumbers: config('showLineNumber', false),
+    spellcheck: config('spellcheck', true),
+    leftSidebar: bool(() => !ws.leftSplit.collapsed),
+    rightSidebar: bool(() => !ws.rightSplit.collapsed),
+    // Obsidian's icon strip: shown in its settings and not hidden by a theme or by us
+    iconStrip: bool(() => {
+      // "mod-left" up to Obsidian 1.x, "mod-primary" in newer versions
+      const el = doc.body.querySelector('.workspace-ribbon.mod-left, .workspace-ribbon.mod-primary');
+      return !!el && el.getClientRects().length > 0;
+    }),
+  };
+}
+
+/**
+ * Whether a plugin with AI ChatBridge's interface is syncing: { busy, current } or null
+ * when it is off. `current` is what is being synced right now ({ provider } or
+ * { hermes: true }), or null. Fields of another plugin, so read defensively.
+ */
+export function readSyncState(app, pluginId) {
+  try {
+    if (!isPluginEnabled(app, pluginId)) return null;
+    const p = app.plugins.plugins[pluginId];
+    // "syncing" leaves out loading the project list; older versions only have "busy".
+    const busy = typeof p.syncing === 'boolean' ? p.syncing : !!p.busy;
+    const cur = busy && p.current && typeof p.current === 'object' ? p.current : null;
+    return { busy, current: cur ? { provider: typeof cur.provider === 'string' ? cur.provider : '', hermes: cur.hermes === true } : null };
+  } catch (e) {
+    return null;
   }
 }
 

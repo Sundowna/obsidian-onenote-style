@@ -8,7 +8,7 @@
  *
  * `host` is the plugin. The view needs from it:
  *   app, ribbonLayout, state.ribbonTab, state.ribbonCollapsed,
- *   saveRibbon(), runRibbonCommand(id), toggleRibbon(),
+ *   saveRibbon(), runRibbonCommand(id), toggleRibbon(), ribbonButtonState(),
  *   promptText(title, value, cta), confirm(title, message, cta),
  *   exportRibbon(), importRibbon(), resetRibbon()
  */
@@ -18,6 +18,7 @@ import * as M from './model.js';
 import { fitGroups, fitTabs, LEVEL_FULL, LEVEL_SMALL, LEVEL_ICONS, LEVEL_COLLAPSED } from './collapse.js';
 import { findCommand, hotkeyText, missingReason, tintMenuItem } from './internal.js';
 import { CommandPickerModal, IconPickerModal } from './modals.js';
+import { pressedState } from './state.js';
 
 const DRAG_THRESHOLD = 6;
 const TAB_HOVER_MS = 450;
@@ -38,6 +39,7 @@ export class RibbonView {
     this.suppressClick = false;
     this.editing = false;
     this.editScope = null;
+    this.tips = new WeakMap(); // button -> its tooltip without the state
     this.onClick = this.onClick.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
@@ -340,6 +342,49 @@ export class RibbonView {
     if (overflow.length) this.drawMore(strip, overflow);
     if (this.editing) this.drawNewGroup(strip);
     strip.dataset.fit = key;
+    this.refreshStates();
+  }
+
+  /* ---------- button state: pressed (mode is on) and busy (sync is running) ---------- */
+
+  /**
+   * Shows which buttons are "on" and which are working. Called after every draw, after a
+   * click and on a timer, because a mode can also change by hotkey, in the settings or
+   * from another plugin. Only touches the DOM where something changed.
+   */
+  refreshStates() {
+    if (!this.strip || !this.strip.isConnected || this.drag) return;
+    const state = this.host.ribbonButtonState();
+    this.markButtons(this.strip, state);
+    if (this.popover) this.markButtons(this.popover.el, state);
+    const more = this.strip.querySelector(':scope > .onr-more .onr-more-button');
+    if (more) more.toggleClass('is-busy', (this.moreGroups || []).some((g) => g.items.some((i) => state.busy.has(i.command))));
+  }
+
+  markButtons(root, state) {
+    root.querySelectorAll('[data-item]').forEach((b) => {
+      const command = b.dataset.command;
+      const usable = !b.hasClass('is-disabled');
+      const pressed = usable ? pressedState(command, state.ctx) : null;
+      const busy = usable && state.busy.has(command);
+      b.toggleClass('is-pressed', pressed === true);
+      b.toggleClass('is-busy', busy);
+      const aria = pressed === null ? null : String(pressed);
+      if (b.getAttribute('aria-pressed') !== aria) {
+        if (aria === null) b.removeAttribute('aria-pressed');
+        else b.setAttr('aria-pressed', aria);
+      }
+      const base = this.tips.get(b);
+      if (!base) return;
+      const tip = base + (busy ? ' - running...' : pressed ? ' (on)' : '');
+      if (b.getAttribute('aria-label') !== tip) b.setAttr('aria-label', tip);
+    });
+    // A group that is folded into one button moves while one of its buttons is busy.
+    root.querySelectorAll('.onr-group.is-collapsed[data-group]').forEach((g) => {
+      const found = M.findGroup(this.layout, g.dataset.group);
+      const button = g.querySelector('.onr-group-button');
+      if (button) button.toggleClass('is-busy', !!found && found.group.items.some((i) => state.busy.has(i.command)));
+    });
   }
 
   drawGroup(parent, group, level) {
@@ -386,13 +431,14 @@ export class RibbonView {
   drawButton(parent, item, mode) {
     const cmd = findCommand(this.app, item.command);
     const label = this.labelOf(item, cmd);
-    const b = parent.createEl('button', { cls: `onr-btn is-${mode}`, attr: { type: 'button', 'data-item': item.id, 'data-tooltip-position': 'bottom' } });
+    const b = parent.createEl('button', { cls: `onr-btn is-${mode}`, attr: { type: 'button', 'data-item': item.id, 'data-command': item.command, 'data-tooltip-position': 'bottom' } });
     this.drawIcon(b.createSpan('onr-btn-icon'), item, cmd, label, mode === 'large');
     if (mode !== 'icon') b.createSpan({ cls: 'onr-btn-label', text: label });
     if (cmd) {
       const keys = hotkeyText(this.app, item.command);
       const name = cmd.name && cmd.name.toLowerCase() !== label.toLowerCase() ? `${label}: ${cmd.name}` : label;
       b.setAttr('aria-label', keys ? `${name} (${keys})` : name);
+      this.tips.set(b, b.getAttribute('aria-label'));
     } else {
       b.addClass('is-disabled');
       b.setAttr('aria-disabled', 'true');
@@ -454,6 +500,7 @@ export class RibbonView {
     pop.addEventListener('click', this.onClick);
     pop.addEventListener('contextmenu', this.onContextMenu);
     build(pop);
+    this.markButtons(pop, this.host.ribbonButtonState());
     const r = anchorEl.getBoundingClientRect();
     const vw = doc.documentElement.clientWidth;
     const vh = doc.documentElement.clientHeight;

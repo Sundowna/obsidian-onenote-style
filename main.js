@@ -505,6 +505,59 @@ function isPluginEnabled(app, id) {
     return false;
   }
 }
+function readToggleContext(app, doc, MarkdownView3) {
+  const soft = (fn) => {
+    try {
+      const v = fn();
+      return v === void 0 ? null : v;
+    } catch (e) {
+      return null;
+    }
+  };
+  const bool = (fn) => {
+    const v = soft(fn);
+    return v === null ? null : !!v;
+  };
+  const ws = app.workspace;
+  const view = soft(() => ws.getActiveViewOfType(MarkdownView3));
+  const leaf = soft(() => view ? view.leaf : ws.getMostRecentLeaf());
+  const viewState = soft(() => view ? view.leaf.getViewState() : null);
+  const st = viewState && viewState.state || {};
+  const config = (key, fallback) => bool(() => {
+    const v = app.vault.getConfig(key);
+    return v === void 0 || v === null ? fallback : v;
+  });
+  return {
+    dark: doc.body.classList.contains("theme-dark"),
+    fullPage: doc.body.classList.contains("onenote-fullpage"),
+    // 'preview' (reading), 'source' (raw Markdown), 'live' (Live Preview) or null (no page)
+    mode: view ? st.mode === "preview" ? "preview" : st.source === true ? "source" : "live" : null,
+    backlinks: view ? !!st.backlinks : null,
+    pinned: leaf ? bool(() => !!leaf.getViewState().pinned) : null,
+    stacked: leaf ? bool(() => !!(leaf.parent && leaf.parent.isStacked)) : null,
+    readableLineLength: config("readableLineLength", true),
+    lineNumbers: config("showLineNumber", false),
+    spellcheck: config("spellcheck", true),
+    leftSidebar: bool(() => !ws.leftSplit.collapsed),
+    rightSidebar: bool(() => !ws.rightSplit.collapsed),
+    // Obsidian's icon strip: shown in its settings and not hidden by a theme or by us
+    iconStrip: bool(() => {
+      const el = doc.body.querySelector(".workspace-ribbon.mod-left, .workspace-ribbon.mod-primary");
+      return !!el && el.getClientRects().length > 0;
+    })
+  };
+}
+function readSyncState(app, pluginId) {
+  try {
+    if (!isPluginEnabled(app, pluginId)) return null;
+    const p = app.plugins.plugins[pluginId];
+    const busy = typeof p.syncing === "boolean" ? p.syncing : !!p.busy;
+    const cur = busy && p.current && typeof p.current === "object" ? p.current : null;
+    return { busy, current: cur ? { provider: typeof cur.provider === "string" ? cur.provider : "", hermes: cur.hermes === true } : null };
+  } catch (e) {
+    return null;
+  }
+}
 function setDarkMode(app, dark, doc) {
   try {
     if (typeof app.changeTheme === "function") {
@@ -570,6 +623,68 @@ var IconPickerModal = class extends import_obsidian.FuzzySuggestModal {
   }
 };
 
+// src/ribbon/state.js
+var O = "onenote-style:";
+var AI = "ai-chatbridge:";
+var SYNC_ALL = AI + "sync-all-chats";
+var TOGGLES = {
+  // this plugin
+  [O + "toggle-syntax-visibility"]: (c) => !!c.settings.hideSyntax,
+  [O + "toggle-syntax-guard"]: (c) => !!c.settings.syntaxGuard,
+  [O + "toggle-quick-bar"]: (c) => !!c.settings.quickBar,
+  [O + "toggle-section-tabs"]: (c) => !!c.settings.showSectionTabs,
+  [O + "full-page-view"]: (c) => !!c.fullPage,
+  [O + "use-light-mode"]: (c) => !c.dark,
+  [O + "use-dark-mode"]: (c) => !!c.dark,
+  // Obsidian: the open page
+  "markdown:toggle-preview": (c) => c.mode ? c.mode === "preview" : null,
+  "editor:toggle-source": (c) => c.mode ? c.mode === "source" : null,
+  "workspace:toggle-pin": (c) => c.pinned,
+  "workspace:toggle-stacked-tabs": (c) => c.stacked,
+  "backlink:toggle-backlinks-in-document": (c) => c.mode ? !!c.backlinks : null,
+  // Obsidian: settings and window
+  "editor:toggle-readable-line-length": (c) => c.readableLineLength,
+  "editor:toggle-line-numbers": (c) => c.lineNumbers,
+  "editor:toggle-spellcheck": (c) => c.spellcheck,
+  "app:toggle-left-sidebar": (c) => c.leftSidebar,
+  "app:toggle-right-sidebar": (c) => c.rightSidebar,
+  "app:toggle-ribbon": (c) => c.iconStrip
+};
+var TOGGLE_COMMANDS = Object.keys(TOGGLES);
+function pressedState(command, ctx) {
+  const read = TOGGLES[command];
+  if (!read || !ctx) return null;
+  try {
+    const on = read(ctx);
+    return typeof on === "boolean" ? on : null;
+  } catch (e) {
+    return null;
+  }
+}
+var PROVIDER_COMMAND = {
+  claude: AI + "sync-claude-chats",
+  chatgpt: AI + "sync-chatgpt-chats",
+  gemini: AI + "sync-gemini-chats",
+  lumo: AI + "sync-lumo-chats"
+};
+var HERMES = AI + "sync-hermes-chats";
+var SYNC_COMMANDS = /* @__PURE__ */ new Set([SYNC_ALL, HERMES, AI + "sync-desktop-app-chats", ...Object.values(PROVIDER_COMMAND)]);
+function isSyncCommand(command) {
+  return SYNC_COMMANDS.has(command);
+}
+function syncingCommands(sync, started) {
+  const out = /* @__PURE__ */ new Set();
+  if (!sync || !sync.busy) return out;
+  const origin = isSyncCommand(started) ? started : SYNC_ALL;
+  out.add(origin);
+  const cur = sync.current;
+  if (origin === SYNC_ALL && cur) {
+    if (cur.hermes) out.add(HERMES);
+    else if (PROVIDER_COMMAND[cur.provider]) out.add(PROVIDER_COMMAND[cur.provider]);
+  }
+  return out;
+}
+
 // src/ribbon/view.js
 var DRAG_THRESHOLD = 6;
 var TAB_HOVER_MS = 450;
@@ -589,6 +704,7 @@ var RibbonView = class {
     this.suppressClick = false;
     this.editing = false;
     this.editScope = null;
+    this.tips = /* @__PURE__ */ new WeakMap();
     this.onClick = this.onClick.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
@@ -875,6 +991,45 @@ var RibbonView = class {
     if (overflow.length) this.drawMore(strip, overflow);
     if (this.editing) this.drawNewGroup(strip);
     strip.dataset.fit = key;
+    this.refreshStates();
+  }
+  /* ---------- button state: pressed (mode is on) and busy (sync is running) ---------- */
+  /**
+   * Shows which buttons are "on" and which are working. Called after every draw, after a
+   * click and on a timer, because a mode can also change by hotkey, in the settings or
+   * from another plugin. Only touches the DOM where something changed.
+   */
+  refreshStates() {
+    if (!this.strip || !this.strip.isConnected || this.drag) return;
+    const state = this.host.ribbonButtonState();
+    this.markButtons(this.strip, state);
+    if (this.popover) this.markButtons(this.popover.el, state);
+    const more = this.strip.querySelector(":scope > .onr-more .onr-more-button");
+    if (more) more.toggleClass("is-busy", (this.moreGroups || []).some((g) => g.items.some((i) => state.busy.has(i.command))));
+  }
+  markButtons(root, state) {
+    root.querySelectorAll("[data-item]").forEach((b) => {
+      const command = b.dataset.command;
+      const usable = !b.hasClass("is-disabled");
+      const pressed = usable ? pressedState(command, state.ctx) : null;
+      const busy = usable && state.busy.has(command);
+      b.toggleClass("is-pressed", pressed === true);
+      b.toggleClass("is-busy", busy);
+      const aria = pressed === null ? null : String(pressed);
+      if (b.getAttribute("aria-pressed") !== aria) {
+        if (aria === null) b.removeAttribute("aria-pressed");
+        else b.setAttr("aria-pressed", aria);
+      }
+      const base = this.tips.get(b);
+      if (!base) return;
+      const tip = base + (busy ? " - running..." : pressed ? " (on)" : "");
+      if (b.getAttribute("aria-label") !== tip) b.setAttr("aria-label", tip);
+    });
+    root.querySelectorAll(".onr-group.is-collapsed[data-group]").forEach((g) => {
+      const found = findGroup(this.layout, g.dataset.group);
+      const button = g.querySelector(".onr-group-button");
+      if (button) button.toggleClass("is-busy", !!found && found.group.items.some((i) => state.busy.has(i.command)));
+    });
   }
   drawGroup(parent, group, level) {
     const el = parent.createDiv({ cls: "onr-group", attr: { "data-group": group.id, "data-level": String(level) } });
@@ -918,13 +1073,14 @@ var RibbonView = class {
   drawButton(parent, item, mode) {
     const cmd = findCommand(this.app, item.command);
     const label = this.labelOf(item, cmd);
-    const b = parent.createEl("button", { cls: `onr-btn is-${mode}`, attr: { type: "button", "data-item": item.id, "data-tooltip-position": "bottom" } });
+    const b = parent.createEl("button", { cls: `onr-btn is-${mode}`, attr: { type: "button", "data-item": item.id, "data-command": item.command, "data-tooltip-position": "bottom" } });
     this.drawIcon(b.createSpan("onr-btn-icon"), item, cmd, label, mode === "large");
     if (mode !== "icon") b.createSpan({ cls: "onr-btn-label", text: label });
     if (cmd) {
       const keys = hotkeyText(this.app, item.command);
       const name = cmd.name && cmd.name.toLowerCase() !== label.toLowerCase() ? `${label}: ${cmd.name}` : label;
       b.setAttr("aria-label", keys ? `${name} (${keys})` : name);
+      this.tips.set(b, b.getAttribute("aria-label"));
     } else {
       b.addClass("is-disabled");
       b.setAttr("aria-disabled", "true");
@@ -979,6 +1135,7 @@ var RibbonView = class {
     pop.addEventListener("click", this.onClick);
     pop.addEventListener("contextmenu", this.onContextMenu);
     build2(pop);
+    this.markButtons(pop, this.host.ribbonButtonState());
     const r = anchorEl.getBoundingClientRect();
     const vw = doc.documentElement.clientWidth;
     const vh = doc.documentElement.clientHeight;
@@ -1481,33 +1638,33 @@ var RibbonView = class {
 };
 
 // src/ribbon/defaults.js
-var O = "onenote-style:";
+var O2 = "onenote-style:";
 var L = (command, label, icon2, color) => ({ command, label, icon: icon2, size: "large", color });
 var S = (command, label, icon2, color) => ({ command, label, icon: icon2, size: "small", color });
 var G = (id, name, items, priority) => ({ id, name, priority: priority || "normal", items });
 var T = (id, name, groups) => ({ id, name, groups });
 var EDITING = G("home-editing", "Editing", [
-  S(O + "toggle-syntax-visibility", "Syntax", "eye-off"),
-  S(O + "toggle-syntax-guard", "Syntax Guard", "shield-check", "green"),
-  S(O + "toggle-quick-bar", "Quick Bar", "highlighter", "yellow")
+  S(O2 + "toggle-syntax-visibility", "Syntax", "eye-off"),
+  S(O2 + "toggle-syntax-guard", "Syntax Guard", "shield-check", "green"),
+  S(O2 + "toggle-quick-bar", "Quick Bar", "highlighter", "yellow")
 ], "last");
 var TABS = [
   T("home", "Home", [
     G("home-clipboard", "Clipboard", [
-      L(O + "paste", "Paste", "clipboard-paste"),
-      S(O + "cut", "Cut", "scissors"),
-      S(O + "copy", "Copy", "copy"),
+      L(O2 + "paste", "Paste", "clipboard-paste"),
+      S(O2 + "cut", "Cut", "scissors"),
+      S(O2 + "copy", "Copy", "copy"),
       S("editor:clear-formatting", "Clear", "eraser", "pink")
     ], "last"),
     G("home-text", "Basic Text", [
       S("editor:toggle-bold", "Bold", "bold"),
       S("editor:toggle-italics", "Italic", "italic"),
-      S(O + "underline", "Underline", "underline"),
+      S(O2 + "underline", "Underline", "underline"),
       S("editor:toggle-strikethrough", "Strike", "strikethrough"),
-      S(O + "highlight-color", "Highlight", "highlighter", "yellow"),
-      S(O + "font-color", "Font Color", "baseline", "red"),
-      S(O + "subscript", "Subscript", "subscript"),
-      S(O + "superscript", "Superscript", "superscript"),
+      S(O2 + "highlight-color", "Highlight", "highlighter", "yellow"),
+      S(O2 + "font-color", "Font Color", "baseline", "red"),
+      S(O2 + "subscript", "Subscript", "subscript"),
+      S(O2 + "superscript", "Superscript", "superscript"),
       S("editor:toggle-code", "Code", "code")
     ], "last"),
     G("home-paragraph", "Paragraph", [
@@ -1519,26 +1676,26 @@ var TABS = [
       S("editor:toggle-blockquote", "Quote", "quote")
     ]),
     G("home-styles", "Styles", [
-      S(O + "heading-1", "Heading 1", "heading-1", "blue"),
-      S(O + "heading-2", "Heading 2", "heading-2", "blue"),
-      S(O + "heading-3", "Heading 3", "heading-3", "blue"),
-      S(O + "heading-4", "Heading 4", "heading-4", "blue"),
-      S(O + "normal", "Normal", "pilcrow")
+      S(O2 + "heading-1", "Heading 1", "heading-1", "blue"),
+      S(O2 + "heading-2", "Heading 2", "heading-2", "blue"),
+      S(O2 + "heading-3", "Heading 3", "heading-3", "blue"),
+      S(O2 + "heading-4", "Heading 4", "heading-4", "blue"),
+      S(O2 + "normal", "Normal", "pilcrow")
     ]),
     G("home-tags", "Tags", [
-      L(O + "tag-todo", "To Do", "check-square", "blue"),
-      S(O + "tag-important", "Important", "star", "yellow"),
-      S(O + "tag-question", "Question", "help-circle", "purple"),
-      S(O + "tag-remember", "Remember", "bookmark", "orange"),
-      S(O + "tag-definition", "Definition", "book-open", "green"),
-      S(O + "tag-idea", "Idea", "lightbulb", "yellow"),
-      S(O + "find-tags", "Find Tags", "search-check")
+      L(O2 + "tag-todo", "To Do", "check-square", "blue"),
+      S(O2 + "tag-important", "Important", "star", "yellow"),
+      S(O2 + "tag-question", "Question", "help-circle", "purple"),
+      S(O2 + "tag-remember", "Remember", "bookmark", "orange"),
+      S(O2 + "tag-definition", "Definition", "book-open", "green"),
+      S(O2 + "tag-idea", "Idea", "lightbulb", "yellow"),
+      S(O2 + "find-tags", "Find Tags", "search-check")
     ]),
     G("home-pages", "Pages", [
-      L(O + "new-page", "New Page", "file-plus"),
-      S(O + "new-subpage", "New Subpage", "corner-down-right"),
-      S(O + "make-subpage", "Make Subpage", "indent"),
-      S(O + "promote-subpage", "Promote", "outdent")
+      L(O2 + "new-page", "New Page", "file-plus"),
+      S(O2 + "new-subpage", "New Subpage", "corner-down-right"),
+      S(O2 + "make-subpage", "Make Subpage", "indent"),
+      S(O2 + "promote-subpage", "Promote", "outdent")
     ]),
     EDITING,
     G("home-ai", "AI", [
@@ -1553,14 +1710,14 @@ var TABS = [
     ], "first"),
     G("home-appearance", "Appearance", [
       L("theme:toggle-light-dark", "Light / Dark", "sun-moon"),
-      S(O + "use-light-mode", "Light", "sun", "yellow"),
-      S(O + "use-dark-mode", "Dark", "moon", "blue"),
+      S(O2 + "use-light-mode", "Light", "sun", "yellow"),
+      S(O2 + "use-dark-mode", "Dark", "moon", "blue"),
       S("theme:switch", "Theme", "palette", "purple")
     ], "first")
   ]),
   T("insert", "Insert", [
     G("insert-tables", "Tables", [
-      L(O + "insert-table-grid", "Table", "table")
+      L(O2 + "insert-table-grid", "Table", "table")
     ]),
     G("insert-files", "Files", [
       L("editor:attach-file", "Attachment", "paperclip"),
@@ -1575,9 +1732,9 @@ var TABS = [
       S("editor:insert-footnote", "Footnote", "file-signature")
     ]),
     G("insert-stamp", "Time Stamp", [
-      S(O + "insert-date", "Date", "calendar", "blue"),
-      S(O + "insert-time", "Time", "clock", "blue"),
-      S(O + "insert-datetime", "Date & Time", "calendar-clock", "blue")
+      S(O2 + "insert-date", "Date", "calendar", "blue"),
+      S(O2 + "insert-time", "Time", "clock", "blue"),
+      S(O2 + "insert-datetime", "Date & Time", "calendar-clock", "blue")
     ]),
     G("insert-blocks", "Blocks", [
       S("editor:insert-callout", "Callout", "message-square", "cyan"),
@@ -1588,18 +1745,18 @@ var TABS = [
       S("editor:toggle-inline-math", "Inline Math", "square-function")
     ]),
     G("insert-symbols", "Symbols", [
-      L(O + "insert-symbol", "Symbol", "omega")
+      L(O2 + "insert-symbol", "Symbol", "omega")
     ]),
     G("insert-pages", "Pages", [
-      L(O + "new-canvas-page", "Canvas Page", "layout-dashboard"),
+      L(O2 + "new-canvas-page", "Canvas Page", "layout-dashboard"),
       S("bases:insert", "Base", "layout-list"),
-      S(O + "new-page", "New Page", "file-plus")
+      S(O2 + "new-page", "New Page", "file-plus")
     ])
   ]),
   T("view", "View", [
     G("view-views", "Views", [
       L("markdown:toggle-preview", "Read / Edit", "book-open"),
-      L(O + "full-page-view", "Full Page", "maximize-2"),
+      L(O2 + "full-page-view", "Full Page", "maximize-2"),
       S("editor:toggle-source", "Source Mode", "code-2"),
       S("editor:toggle-readable-line-length", "Line Width", "ruler"),
       S("editor:toggle-line-numbers", "Line Numbers", "list-ordered")
@@ -1610,14 +1767,14 @@ var TABS = [
       L("window:reset-zoom", "100%", "scan")
     ], "last"),
     G("view-page", "Page Setup", [
-      S(O + "page-color", "Page Color", "paint-bucket", "orange"),
-      S(O + "rule-lines", "Rule Lines", "align-justify"),
-      S(O + "page-width", "Page Width", "move-horizontal")
+      S(O2 + "page-color", "Page Color", "paint-bucket", "orange"),
+      S(O2 + "rule-lines", "Rule Lines", "align-justify"),
+      S(O2 + "page-width", "Page Width", "move-horizontal")
     ]),
     G("view-panes", "Show", [
       S("app:toggle-left-sidebar", "Left Sidebar", "panel-left"),
       S("app:toggle-right-sidebar", "Right Sidebar", "panel-right"),
-      S(O + "toggle-section-tabs", "Section Tabs", "folder-kanban"),
+      S(O2 + "toggle-section-tabs", "Section Tabs", "folder-kanban"),
       S("outline:open", "Outline", "list-tree"),
       S("properties:open-local", "Properties", "info"),
       S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed")
@@ -1639,7 +1796,7 @@ var TABS = [
   T("table", "Table", [
     G("table-insert", "Table", [
       L("editor:insert-table", "Insert Table", "table"),
-      L(O + "insert-table-grid", "Table Grid", "layout-grid")
+      L(O2 + "insert-table-grid", "Table Grid", "layout-grid")
     ]),
     G("table-rows", "Rows", [
       S("editor:table-row-before", "Add Above", "arrow-up-to-line", "green"),
@@ -1679,11 +1836,11 @@ var TABS = [
       S("editor:open-search", "Find in Page", "text-search")
     ]),
     G("nav-pages", "Pages", [
-      S(O + "prev-page", "Previous Page", "chevron-up"),
-      S(O + "next-page", "Next Page", "chevron-down"),
+      S(O2 + "prev-page", "Previous Page", "chevron-up"),
+      S(O2 + "next-page", "Next Page", "chevron-down"),
       S("file-explorer:reveal-active-file", "Show in List", "locate"),
-      S(O + "prev-section", "Previous Section", "chevrons-up"),
-      S(O + "next-section", "Next Section", "chevrons-down"),
+      S(O2 + "prev-section", "Previous Section", "chevrons-up"),
+      S(O2 + "next-section", "Next Section", "chevrons-down"),
       S("notebook-navigator:open", "Navigator", "compass")
     ]),
     G("nav-tabs", "Tabs", [
@@ -1713,10 +1870,10 @@ var TABS = [
       S("notebook-navigator:new-note-from-template", "Note from Template", "file-plus-2")
     ]),
     G("tpl-new", "New", [
-      L(O + "new-page", "New Page", "file-plus"),
+      L(O2 + "new-page", "New Page", "file-plus"),
       S("file-explorer:new-file", "New Note", "file"),
-      S(O + "new-section", "New Section", "folder-plus"),
-      S(O + "new-notebook", "New Notebook", "book-plus")
+      S(O2 + "new-section", "New Section", "folder-plus"),
+      S(O2 + "new-notebook", "New Notebook", "book-plus")
     ]),
     G("tpl-properties", "Properties", [
       S("markdown:add-metadata-property", "Add Property", "plus-circle"),
@@ -1727,7 +1884,7 @@ var TABS = [
   T("canvas", "Canvas", [
     G("canvas-canvas", "Canvas", [
       L("canvas:new-file", "New Canvas", "layout-dashboard"),
-      S(O + "new-canvas-page", "Canvas Page", "file-plus"),
+      S(O2 + "new-canvas-page", "Canvas Page", "file-plus"),
       S("canvas:jump-to-group", "Jump to Group", "move"),
       S("canvas:convert-to-file", "Convert to File", "file-input"),
       S("canvas:export-as-image", "Export Image", "image")
@@ -1783,10 +1940,10 @@ var TABS = [
       L("editor:toggle-comments", "Comment", "message-square-dashed")
     ]),
     G("review-tasks", "Tags and Tasks", [
-      L(O + "find-tags", "Tags Summary", "search-check"),
+      L(O2 + "find-tags", "Tags Summary", "search-check"),
       S("obsidian-tasks-plugin:toggle-done", "Toggle Done", "check-circle", "green"),
       S("obsidian-tasks-plugin:edit-task", "Edit Task", "pencil"),
-      S(O + "remove-tags", "Remove Tags", "eraser", "pink")
+      S(O2 + "remove-tags", "Remove Tags", "eraser", "pink")
     ]),
     G("review-cleanup", "Clean Up", [
       S("editing-toolbar:remove-whitespace-trim", "Trim Line Ends", "align-left"),
@@ -1817,7 +1974,7 @@ var TABS = [
     G("data-tasks", "Tasks", [
       S("obsidian-tasks-plugin:edit-task", "Create / Edit Task", "pencil"),
       S("obsidian-tasks-plugin:toggle-done", "Toggle Done", "check-circle", "green"),
-      S(O + "find-tags", "Tags Summary", "search-check")
+      S(O2 + "find-tags", "Tags Summary", "search-check")
     ]),
     G("data-convert", "Convert", [
       S("editing-toolbar:list-to-table", "List to Table", "table-properties"),
@@ -1831,7 +1988,7 @@ var TABS = [
     G("slides-edit", "Slides", [
       S("editor:insert-horizontal-rule", "Slide Break", "minus"),
       S("markdown:toggle-preview", "Read / Edit", "book-open"),
-      S(O + "full-page-view", "Full Page", "maximize-2")
+      S(O2 + "full-page-view", "Full Page", "maximize-2")
     ]),
     G("slides-export", "Export", [
       L("workspace:export-pdf", "Export to PDF", "file-down")
@@ -1841,8 +1998,8 @@ var TABS = [
     G("util-obsidian", "Obsidian", [
       L("app:open-settings", "Settings", "settings"),
       L("command-palette:open", "Command Palette", "terminal-square"),
-      S(O + "open-community-plugins", "Plugins", "puzzle"),
-      S(O + "open-ai-chatbridge-settings", "ChatBridge", "message-square-text"),
+      S(O2 + "open-community-plugins", "Plugins", "puzzle"),
+      S(O2 + "open-ai-chatbridge-settings", "ChatBridge", "message-square-text"),
       S("app:open-help", "Help", "help-circle")
     ], "last"),
     G("util-file", "File", [
@@ -1862,9 +2019,9 @@ var TABS = [
       S("editing-toolbar:toggle-top-toolbar", "Editing Toolbar", "panel-top")
     ]),
     G("util-ribbon", "Ribbon", [
-      S(O + "ribbon-export", "Export Layout", "download"),
-      S(O + "ribbon-import", "Import Layout", "upload"),
-      S(O + "ribbon-reset", "Reset Ribbon", "rotate-ccw", "red")
+      S(O2 + "ribbon-export", "Export Layout", "download"),
+      S(O2 + "ribbon-import", "Import Layout", "upload"),
+      S(O2 + "ribbon-reset", "Reset Ribbon", "rotate-ccw", "red")
     ], "first")
   ])
 ];
@@ -1915,7 +2072,7 @@ function groupUnderParents(items, keyOf, parentOf) {
 // src/syntax.js
 var import_obsidian3 = require("obsidian");
 var import_language = require("@codemirror/language");
-var import_state = require("@codemirror/state");
+var import_state2 = require("@codemirror/state");
 var import_view = require("@codemirror/view");
 
 // src/syntax-rules.js
@@ -2093,7 +2250,7 @@ function nextBreak(text, i, forward) {
 }
 var hideSyntax = [
   hider,
-  import_state.Prec.high(import_view.keymap.of([
+  import_state2.Prec.high(import_view.keymap.of([
     { key: "Backspace", run: (view) => deleteAcross(view, false) },
     { key: "Delete", run: (view) => deleteAcross(view, true) }
   ]))
@@ -3147,6 +3304,8 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     this.ribbonPrevious = data.ribbonPrevious || null;
     this.ribbon = new RibbonView(this);
     this.registerInterval(window.setInterval(() => this.ribbon.tick(), 1500));
+    this.aiStarted = null;
+    this.registerInterval(window.setInterval(() => this.ribbon.refreshStates(), 400));
     this.lastMarkdownView = null;
     this.popover = null;
     this.requestRefresh = (0, import_obsidian5.debounce)(() => this.refresh(), 60, true);
@@ -4238,7 +4397,22 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       }
     }
     if (!ok) new import_obsidian5.Notice("This command can't be used here right now.");
+    if (ok && isSyncCommand(id)) {
+      const sync = readSyncState(this.app, AI_PLUGIN);
+      if (!sync || !sync.busy) this.aiStarted = { id, time: Date.now() };
+    }
+    this.ribbon.refreshStates();
+    window.setTimeout(() => this.ribbon.refreshStates(), 150);
     return ok;
+  }
+  // What the ribbon's buttons show: `ctx` for pressed buttons, `busy` for running syncs.
+  ribbonButtonState() {
+    const ctx = readToggleContext(this.app, document, import_obsidian5.MarkdownView);
+    ctx.settings = this.settings;
+    const sync = readSyncState(this.app, AI_PLUGIN);
+    const busy = !!sync && sync.busy;
+    if (this.aiStarted && !busy && Date.now() - this.aiStarted.time > 3e3) this.aiStarted = null;
+    return { ctx, busy: syncingCommands(sync, this.aiStarted ? this.aiStarted.id : "") };
   }
   // Where a picker should open: under the ribbon button that was just clicked, else at
   // the top of the page (when the command came from the command palette or a hotkey).

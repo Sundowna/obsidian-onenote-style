@@ -184,6 +184,52 @@ describe('editing', () => {
     });
   });
 
+  describe('headings', () => {
+    it('a click or a drag in the first row of a heading that wraps lands where you clicked', async () => {
+      // Some themes make the heading text an inline-block, which broke this. Do the same here,
+      // so the test does not depend on the theme of the test vault.
+      await browser.execute(() => {
+        const st = document.createElement('style');
+        st.id = 'e2e-inline-block-heading';
+        st.textContent = '.cm-header { display: inline-block; }';
+        document.head.appendChild(st);
+      });
+      try {
+        const line = 4;
+        await withPlugin((plugin, app, l) => {
+          const e = app.workspace.activeEditor.editor;
+          e.setLine(l, '## ' + 'A long heading that has to wrap onto a second row of the page. '.repeat(4).trim());
+        }, line);
+        await pause(300);
+        const at = (ch) => withPlugin((plugin, app, l, c) => {
+          const cm = app.workspace.activeEditor.editor.cm;
+          const r = cm.coordsAtPos(cm.state.doc.line(l + 1).from + c, 1);
+          return { x: Math.round(r.left) + 1, y: Math.round((r.top + r.bottom) / 2) };
+        }, line, ch);
+        const range = () => withPlugin((plugin, app) => {
+          const e = app.workspace.activeEditor.editor;
+          return [e.getCursor('from'), e.getCursor('to')];
+        });
+        const a = await at(20);
+        const b = await at(30);
+        const last = await at(240);
+        expect(last.y).toBeGreaterThan(a.y); // the heading does wrap
+
+        await setCursor(L.last, 0);
+        await browser.action('pointer').move(a).down().up().perform();
+        await pause(250);
+        expect((await range())[0]).toEqual({ line, ch: 20 });
+
+        await setCursor(L.last, 0);
+        await browser.action('pointer').move(a).down().pause(50).move({ ...b, duration: 200 }).pause(50).up().perform();
+        await pause(250);
+        expect(await range()).toEqual([{ line, ch: 20 }, { line, ch: 30 }]);
+      } finally {
+        await browser.execute(() => document.getElementById('e2e-inline-block-heading').remove());
+      }
+    });
+  });
+
   describe('quick bar', () => {
     it('appears above a selection and inside the window', async () => {
       await select(L.last, 0, 4);

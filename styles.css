@@ -879,6 +879,37 @@ body .nav-file-title[data-onenote-sub="2"] .nav-file-title-content::before { lef
   pointer-events: none;
 }
 
+/* ---------- Editor: headings ---------- */
+
+/*
+ * Theme workaround: heading text must stay inline in the editor.
+ *
+ * Symptom (2026-11): in a heading that wraps onto several rows, a click on an upper row
+ * puts the cursor at the same horizontal spot in the LAST row, and dragging selects the
+ * wrong text. Headings that fit on one row and body text are fine.
+ *
+ * Cause: not this plugin. The AnuPpuccin theme (1.5.0, theme.css) has the unconditional
+ * rule ".cm-header { display: inline-block; }". CodeMirror maps a click to a text
+ * position through the browser's caret hit-testing, and that goes wrong inside an
+ * inline-block that spans several rows. Known upstream and unfixed:
+ * https://github.com/AnubisNekhet/AnuPpuccin/issues/198 (and 299).
+ *
+ * How it was found: reproduced in the e2e sandbox, then turned things off one by one.
+ * Still broken with this plugin disabled, with every other plugin disabled and with the
+ * snippets off; fixed the moment the theme was set to the default. If a click lands in
+ * the wrong place again, do the same before touching src/syntax.js: hidden syntax was
+ * the first suspect here and it was innocent (same result with it turned off).
+ *
+ * Trade-off: the theme's optional "Enable Custom Heading Margin" (Style Settings) puts
+ * margins on .cm-header and needs inline-block, so that setting has no effect in the
+ * editor while this rule is here. Reading view is not touched.
+ *
+ * Regression test: "headings" in test/e2e/editing.e2e.mjs. It injects the inline-block
+ * rule itself, so it does not depend on the theme of the test vault. The rule can go
+ * when the theme drops its own; the test will still pass then, so check by hand.
+ */
+.markdown-source-view.mod-cm6 .cm-line .cm-header { display: inline; }
+
 /* ---------- Page appearance: color and rule lines ---------- */
 
 body.onenote-has-page-color .workspace-leaf-content[data-type="markdown"] .view-content,

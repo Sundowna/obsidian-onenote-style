@@ -260,7 +260,9 @@ export class RibbonView {
     if (collapsed) return;
 
     this.strip = el.createDiv('onr-strip');
-    const collapse = el.createDiv({ cls: 'onenote-ribbon-collapse', attr: { 'aria-label': 'Collapse the ribbon (Ctrl+F1)', 'data-tooltip-position': 'left' } });
+    // The key actually assigned (none unless the OneNote shortcuts are on), written the system's way.
+    const collapseKeys = hotkeyText(this.app, 'onenote-style:toggle-ribbon');
+    const collapse = el.createDiv({ cls: 'onenote-ribbon-collapse', attr: { 'aria-label': collapseKeys ? `Collapse the ribbon (${collapseKeys})` : 'Collapse the ribbon', 'data-tooltip-position': 'left' } });
     setIcon(collapse, 'chevron-up');
     collapse.onclick = () => this.host.toggleRibbon();
     if (this.editing) {

@@ -98,7 +98,7 @@ Each works on its own. Together they are low friction from the first minute.
 
 **By hand:** copy `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/Sundowna/obsidian-onenote-style/releases/latest) into `<your vault>/.obsidian/plugins/onenote-style/`, then enable **OneNote Style** under **Settings → Community plugins**.
 
-Needs Obsidian 1.10.6 or newer, on desktop.
+Needs Obsidian 1.10.6 or newer, on desktop: Windows, macOS or Linux.
 
 ## Good to know
 
@@ -126,6 +126,8 @@ After you turn them on in settings (and reload Obsidian). Change any of them und
 | Ctrl+Alt+] / Ctrl+Alt+[ | Make subpage / promote subpage |
 | Alt+PageDown / Alt+PageUp | Next / previous page |
 | Ctrl+F1 | Collapse or expand the ribbon |
+
+**On a Mac** use ⌘ (Command) where the table says Ctrl and ⌥ (Option) where it says Alt. One key differs: Highlight is ⌃⌘H (Control+Command+H), as in OneNote for Mac, because ⌥⌘H is macOS's own "Hide Others". Tooltips in the ribbon show the keys the Mac way.
 
 If Ctrl+1 … Ctrl+6 switch tabs instead of tagging, Obsidian has them bound to "Go to tab". Remove those bindings under **Settings → Hotkeys** (search "tab #").
 

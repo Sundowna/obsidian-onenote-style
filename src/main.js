@@ -12,8 +12,12 @@
 
 import {
   Plugin, ItemView, MarkdownView, Modal, Menu, Notice, PluginSettingTab, Setting,
-  TFile, TFolder, FuzzySuggestModal, setIcon, addIcon, moment, normalizePath, debounce,
+  TFile, TFolder, FuzzySuggestModal, setIcon, addIcon, moment, normalizePath, debounce, Platform,
 } from 'obsidian';
+import { keysText, redoKeys, highlightModifiers } from './keys.js';
+
+/** A shortcut as this system writes it: "Ctrl+Z" on Windows and Linux, "⌘Z" on macOS. */
+const keys = (combo) => keysText(combo, Platform.isMacOS);
 import { RibbonView } from './ribbon/view.js';
 import { defaultLayout, addEditingGroup } from './ribbon/defaults.js';
 import { normalizeLayout, exportLayout, importLayout, activeTab } from './ribbon/model.js';
@@ -409,7 +413,7 @@ class TagSummaryModal extends Modal {
         };
       }
     }
-    if (!total) listEl.createDiv({ cls: 'onenote-empty', text: 'No tagged notes found. Tag a line with Ctrl+1 … Ctrl+6.' });
+    if (!total) listEl.createDiv({ cls: 'onenote-empty', text: `No tagged notes found. Tag a line with ${keys('Mod+1')} … ${keys('Mod+6')}.` });
   }
   onClose() { this.contentEl.empty(); }
 }
@@ -695,7 +699,7 @@ class OneNoteSettingTab extends PluginSettingTab {
 
     new Setting(el).setName('Keyboard').setHeading();
     new Setting(el).setName('OneNote keyboard shortcuts')
-      .setDesc('Ctrl+1 to Ctrl+6 for note tags, Ctrl+Alt+1 to 6 for headings, Alt+Shift+D for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.')
+      .setDesc(`${keys('Mod+1')} to ${keys('Mod+6')} for note tags, ${keys('Mod+Alt+1')} to 6 for headings, ${keys('Alt+Shift+D')} for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.`)
       .addToggle((t) => t.setValue(s.oneNoteHotkeys).onChange(async (v) => { s.oneNoteHotkeys = v; await p.persist(); }));
 
     new Setting(el).setName('Ribbon layout').setHeading();
@@ -1719,7 +1723,7 @@ class OneNotePlugin extends Plugin {
     this.addCommand({ id: 'find-tags', name: 'Find tags (Tags Summary)', callback: () => new TagSummaryModal(this.app, this).open() });
 
     ed('underline', 'Underline', (e) => wrap(e, '<u>', '</u>'), key(['Mod'], 'U'));
-    ed('highlight', 'Highlight', (e) => wrap(e, '==', '=='), key(['Mod', 'Alt'], 'H'));
+    ed('highlight', 'Highlight', (e) => wrap(e, '==', '=='), key(highlightModifiers(Platform.isMacOS), 'H'));
     // OneNote's Ctrl+= / Ctrl+Shift+= would clash with Obsidian's zoom keys, so no default hotkeys here.
     ed('subscript', 'Subscript', (e) => wrap(e, '<sub>', '</sub>'));
     ed('superscript', 'Superscript', (e) => wrap(e, '<sup>', '</sup>'));
@@ -1861,8 +1865,8 @@ class OneNotePlugin extends Plugin {
       return b;
     };
     this.qatEl.empty();
-    tool(this.qatEl, 'undo', 'Undo (Ctrl+Z)', () => this.edit((e) => e.undo()));
-    tool(this.qatEl, 'redo', 'Redo (Ctrl+Y)', () => this.edit((e) => e.redo()));
+    tool(this.qatEl, 'undo', `Undo (${keys('Mod+Z')})`, () => this.edit((e) => e.undo()));
+    tool(this.qatEl, 'redo', `Redo (${keys(redoKeys(Platform.isMacOS))})`, () => this.edit((e) => e.redo()));
 
     const end = this.tabRowEndEl;
     end.empty();
@@ -1871,7 +1875,7 @@ class OneNotePlugin extends Plugin {
     }
     const search = end.createDiv('onenote-search');
     icon(search.createSpan('onenote-search-icon'), 'search', '⌕');
-    const input = search.createEl('input', { type: 'search', attr: { placeholder: 'Search (Ctrl+Shift+F)' } });
+    const input = search.createEl('input', { type: 'search', attr: { placeholder: `Search (${keys('Mod+Shift+F')})` } });
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const q = input.value.trim();

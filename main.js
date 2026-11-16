@@ -25,6 +25,19 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
+// src/keys.js
+var MAC_SYMBOL = { Ctrl: "\u2303", Alt: "\u2325", Shift: "\u21E7", Mod: "\u2318" };
+var MAC_ORDER = ["Ctrl", "Alt", "Shift", "Mod"];
+function keysText(combo, isMac) {
+  const parts = combo.split("+");
+  const key = parts.pop();
+  if (!isMac) return [...parts.map((m) => m === "Mod" ? "Ctrl" : m), key].join("+");
+  const mods = MAC_ORDER.filter((m) => parts.includes(m)).map((m) => MAC_SYMBOL[m]).join("");
+  return mods + key;
+}
+var redoKeys = (isMac) => isMac ? "Mod+Shift+Z" : "Mod+Y";
+var highlightModifiers = (isMac) => isMac ? ["Mod", "Ctrl"] : ["Mod", "Alt"];
+
 // src/ribbon/view.js
 var import_obsidian2 = require("obsidian");
 
@@ -907,7 +920,8 @@ var RibbonView = class {
     this.topBar.toggleClass("is-ribbon-collapsed", collapsed);
     if (collapsed) return;
     this.strip = el.createDiv("onr-strip");
-    const collapse = el.createDiv({ cls: "onenote-ribbon-collapse", attr: { "aria-label": "Collapse the ribbon (Ctrl+F1)", "data-tooltip-position": "left" } });
+    const collapseKeys = hotkeyText(this.app, "onenote-style:toggle-ribbon");
+    const collapse = el.createDiv({ cls: "onenote-ribbon-collapse", attr: { "aria-label": collapseKeys ? `Collapse the ribbon (${collapseKeys})` : "Collapse the ribbon", "data-tooltip-position": "left" } });
     (0, import_obsidian2.setIcon)(collapse, "chevron-up");
     collapse.onclick = () => this.host.toggleRibbon();
     if (this.editing) {
@@ -1077,9 +1091,9 @@ var RibbonView = class {
     this.drawIcon(b.createSpan("onr-btn-icon"), item, cmd, label, mode === "large");
     if (mode !== "icon") b.createSpan({ cls: "onr-btn-label", text: label });
     if (cmd) {
-      const keys = hotkeyText(this.app, item.command);
+      const keys2 = hotkeyText(this.app, item.command);
       const name = cmd.name && cmd.name.toLowerCase() !== label.toLowerCase() ? `${label}: ${cmd.name}` : label;
-      b.setAttr("aria-label", keys ? `${name} (${keys})` : name);
+      b.setAttr("aria-label", keys2 ? `${name} (${keys2})` : name);
       this.tips.set(b, b.getAttribute("aria-label"));
     } else {
       b.addClass("is-disabled");
@@ -2042,12 +2056,12 @@ function defaultLayout() {
 
 // src/subpages.js
 function groupUnderParents(items, keyOf, parentOf) {
-  const keys = new Set(items.map(keyOf));
+  const keys2 = new Set(items.map(keyOf));
   const kids = /* @__PURE__ */ new Map();
   const roots = [];
   for (const item of items) {
     const parent = parentOf(item);
-    if (parent != null && parent !== keyOf(item) && keys.has(parent)) {
+    if (parent != null && parent !== keyOf(item) && keys2.has(parent)) {
       if (!kids.has(parent)) kids.set(parent, []);
       kids.get(parent).push(item);
     } else {
@@ -2549,6 +2563,7 @@ var QuickBar = class {
 };
 
 // src/main.js
+var keys = (combo) => keysText(combo, import_obsidian5.Platform.isMacOS);
 var NOTEBOOKS_VIEW = "onenote-notebooks";
 var PAGES_VIEW = "onenote-pages";
 var DRAG_TYPE = "text/x-onenote-page";
@@ -2983,7 +2998,7 @@ var TagSummaryModal = class extends import_obsidian5.Modal {
         };
       }
     }
-    if (!total) listEl.createDiv({ cls: "onenote-empty", text: "No tagged notes found. Tag a line with Ctrl+1 \u2026 Ctrl+6." });
+    if (!total) listEl.createDiv({ cls: "onenote-empty", text: `No tagged notes found. Tag a line with ${keys("Mod+1")} \u2026 ${keys("Mod+6")}.` });
   }
   onClose() {
     this.contentEl.empty();
@@ -3279,7 +3294,7 @@ var OneNoteSettingTab = class extends import_obsidian5.PluginSettingTab {
       await changed();
     }));
     new import_obsidian5.Setting(el).setName("Keyboard").setHeading();
-    new import_obsidian5.Setting(el).setName("OneNote keyboard shortcuts").setDesc("Ctrl+1 to Ctrl+6 for note tags, Ctrl+Alt+1 to 6 for headings, Alt+Shift+D for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.").addToggle((t) => t.setValue(s.oneNoteHotkeys).onChange(async (v) => {
+    new import_obsidian5.Setting(el).setName("OneNote keyboard shortcuts").setDesc(`${keys("Mod+1")} to ${keys("Mod+6")} for note tags, ${keys("Mod+Alt+1")} to 6 for headings, ${keys("Alt+Shift+D")} for the date and the other OneNote keys listed in the README. Off: the commands have no keys until you assign them under Settings > Hotkeys. Takes effect after you reload Obsidian.`).addToggle((t) => t.setValue(s.oneNoteHotkeys).onChange(async (v) => {
       s.oneNoteHotkeys = v;
       await p.persist();
     }));
@@ -4230,7 +4245,7 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     }));
     this.addCommand({ id: "find-tags", name: "Find tags (Tags Summary)", callback: () => new TagSummaryModal(this.app, this).open() });
     ed("underline", "Underline", (e) => wrap(e, "<u>", "</u>"), key(["Mod"], "U"));
-    ed("highlight", "Highlight", (e) => wrap(e, "==", "=="), key(["Mod", "Alt"], "H"));
+    ed("highlight", "Highlight", (e) => wrap(e, "==", "=="), key(highlightModifiers(import_obsidian5.Platform.isMacOS), "H"));
     ed("subscript", "Subscript", (e) => wrap(e, "<sub>", "</sub>"));
     ed("superscript", "Superscript", (e) => wrap(e, "<sup>", "</sup>"));
     ed("clear-formatting", "Clear formatting", (e) => this.clearFormat(e));
@@ -4357,8 +4372,8 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       return b;
     };
     this.qatEl.empty();
-    tool(this.qatEl, "undo", "Undo (Ctrl+Z)", () => this.edit((e) => e.undo()));
-    tool(this.qatEl, "redo", "Redo (Ctrl+Y)", () => this.edit((e) => e.redo()));
+    tool(this.qatEl, "undo", `Undo (${keys("Mod+Z")})`, () => this.edit((e) => e.undo()));
+    tool(this.qatEl, "redo", `Redo (${keys(redoKeys(import_obsidian5.Platform.isMacOS))})`, () => this.edit((e) => e.redo()));
     const end = this.tabRowEndEl;
     end.empty();
     if (document.body.hasClass("onenote-fullpage")) {
@@ -4366,7 +4381,7 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     }
     const search = end.createDiv("onenote-search");
     icon(search.createSpan("onenote-search-icon"), "search", "\u2315");
-    const input = search.createEl("input", { type: "search", attr: { placeholder: "Search (Ctrl+Shift+F)" } });
+    const input = search.createEl("input", { type: "search", attr: { placeholder: `Search (${keys("Mod+Shift+F")})` } });
     input.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       const q = input.value.trim();

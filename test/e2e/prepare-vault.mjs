@@ -32,6 +32,15 @@ export function prepareVault() {
       fs.cpSync(p, path.join(dst, 'plugins', id), { recursive: true });
       enabled.push(id);
     }
+    // Notebook Navigator opens a "What's new" window after each of its updates. The sandbox
+    // starts with empty storage, so that window came up on every start and covered the ribbon
+    // (clicks failed, screenshots showed it). Its update check would also go online.
+    const navData = path.join(dst, 'plugins', 'notebook-navigator', 'data.json');
+    if (enabled.includes('notebook-navigator')) {
+      const d = fs.existsSync(navData) ? JSON.parse(fs.readFileSync(navData, 'utf8')) : {};
+      Object.assign(d, { showReleaseNotes: false, checkForUpdatesOnStart: false });
+      fs.writeFileSync(navData, JSON.stringify(d, null, 2));
+    }
     // AI ChatBridge: program files only (no settings, no accounts), installed but turned
     // off. With its default settings it never syncs by itself, so it stays offline. The
     // tests turn it on to check that its commands can be added to the ribbon.

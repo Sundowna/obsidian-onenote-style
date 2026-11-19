@@ -1139,7 +1139,7 @@ var RibbonView = class {
     return el;
   }
   /* ---------- drop-downs ---------- */
-  openPopover(anchorEl, cls, build2) {
+  openPopover(anchorEl, cls, build3) {
     const wasOpen = this.popover && this.popover.anchor === anchorEl;
     this.closePopover();
     if (wasOpen) return;
@@ -1148,7 +1148,7 @@ var RibbonView = class {
     pop.addEventListener("mousedown", (e) => e.preventDefault());
     pop.addEventListener("click", this.onClick);
     pop.addEventListener("contextmenu", this.onContextMenu);
-    build2(pop);
+    build3(pop);
     this.markButtons(pop, this.host.ribbonButtonState());
     const r = anchorEl.getBoundingClientRect();
     const vw = doc.documentElement.clientWidth;
@@ -2270,6 +2270,82 @@ var hideSyntax = [
   ]))
 ];
 
+// src/wrap-indent.js
+var import_language2 = require("@codemirror/language");
+var import_state3 = require("@codemirror/state");
+var import_view2 = require("@codemirror/view");
+
+// src/hang-rules.js
+var MARKER = /^(?:\d{1,3}[.)](?!\d)\s*|[-*+]\s+)/;
+function hangColumns(text, tabSize = 4) {
+  let col = 0;
+  let i = 0;
+  for (; i < text.length; i++) {
+    const c = text[i];
+    if (c === "	") col += tabSize - col % tabSize;
+    else if (c === " ") col++;
+    else break;
+  }
+  if (i === text.length) return 0;
+  const m = MARKER.exec(text.slice(i));
+  if (m) col += m[0].replace(/\t/g, " ".repeat(tabSize)).length;
+  return col;
+}
+function isCodeBlockToken(name) {
+  const t = name.split("_");
+  return t.includes("hmd-codeblock") && !t.some((x) => x.startsWith("formatting-code-block"));
+}
+
+// src/wrap-indent.js
+var cache = /* @__PURE__ */ new Map();
+function hang(cols) {
+  let d = cache.get(cols);
+  if (!d) {
+    d = import_view2.Decoration.line({ class: "onenote-hang", attributes: { style: `--onenote-hang: ${cols}ch` } });
+    cache.set(cols, d);
+  }
+  return d;
+}
+function inCodeBlock(tree, line) {
+  let inside = false;
+  tree.iterate({
+    from: line.from,
+    to: Math.max(line.to, line.from + 1),
+    enter: (n) => {
+      if (inside) return false;
+      if (isCodeBlockToken(n.name)) inside = true;
+    }
+  });
+  return inside;
+}
+function build2(view) {
+  const { state } = view;
+  const tree = (0, import_language2.syntaxTree)(state);
+  const b = new import_state3.RangeSetBuilder();
+  let last = -1;
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = state.doc.lineAt(pos);
+      pos = line.to + 1;
+      if (line.from <= last) continue;
+      last = line.from;
+      const cols = hangColumns(line.text, state.tabSize);
+      if (cols && inCodeBlock(tree, line)) b.add(line.from, line.from, hang(cols));
+    }
+  }
+  return b.finish();
+}
+var wrapIndent = import_view2.ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.decorations = build2(view);
+  }
+  update(u) {
+    if (u.docChanged || u.viewportChanged || (0, import_language2.syntaxTree)(u.startState) !== (0, import_language2.syntaxTree)(u.state)) {
+      this.decorations = build2(u.view);
+    }
+  }
+}, { decorations: (v) => v.decorations });
+
 // src/quickbar.js
 var import_obsidian4 = require("obsidian");
 
@@ -2719,6 +2795,8 @@ var DEFAULT_SETTINGS = {
   // with hidden syntax: notes that open in Source mode switch to Live Preview
   quickBar: true,
   // floating toolbar above selected text
+  codeWrapIndent: true,
+  // wrapped code-block lines start under the first word of their line
   oneNoteHotkeys: false,
   // OneNote's keyboard shortcuts are opt-in (Obsidian's guideline: no default hotkeys)
   pageFont: 'Calibri, Carlito, "Segoe UI", sans-serif',
@@ -3280,6 +3358,7 @@ var OneNoteSettingTab = class extends import_obsidian5.PluginSettingTab {
       await p.persist();
     }));
     new import_obsidian5.Setting(el).setName("Quick Bar").setDesc('A small toolbar above selected text: bold, italic, strikethrough, highlight colours, link, copy, clear formatting. Also the command "Toggle Quick Bar".').addToggle((t) => t.setValue(s.quickBar).onChange((v) => p.setQuickBar(v)));
+    new import_obsidian5.Setting(el).setName("Indent wrapped code lines").setDesc('In a code block, a long line that wraps continues under the first word of its line, past its tabs and a list number like "3.", instead of at the left edge. Only the look changes, not the text. Also the command "Toggle wrapped-line indent in code blocks".').addToggle((t) => t.setValue(s.codeWrapIndent).onChange((v) => p.setCodeWrapIndent(v)));
     new import_obsidian5.Setting(el).setName("Pages").setHeading();
     new import_obsidian5.Setting(el).setName("New page name").addText((t) => t.setValue(s.newPageName).onChange(async (v) => {
       s.newPageName = v.trim() || "Untitled Page";
@@ -3345,6 +3424,9 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     this.syntaxExtension = [];
     this.registerEditorExtension(this.syntaxExtension);
     this.applyHideSyntax();
+    this.wrapExtension = [];
+    this.registerEditorExtension(this.wrapExtension);
+    this.applyCodeWrapIndent();
     this.quickBar = new QuickBar(this);
     this.quickBar.mount();
     this.app.workspace.onLayoutReady(async () => {
@@ -4022,6 +4104,16 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       leaf.setViewState(st);
     }
   }
+  applyCodeWrapIndent() {
+    this.wrapExtension.length = 0;
+    if (this.settings.codeWrapIndent) this.wrapExtension.push(wrapIndent);
+    this.app.workspace.updateOptions();
+  }
+  async setCodeWrapIndent(on) {
+    this.settings.codeWrapIndent = !!on;
+    this.applyCodeWrapIndent();
+    await this.persist();
+  }
   async setQuickBar(on) {
     this.settings.quickBar = !!on;
     if (!on) this.quickBar.hide();
@@ -4304,6 +4396,10 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       await this.setQuickBar(!this.settings.quickBar);
       new import_obsidian5.Notice(this.settings.quickBar ? "Quick Bar on" : "Quick Bar off");
     });
+    run("toggle-code-wrap-indent", "Toggle wrapped-line indent in code blocks", async () => {
+      await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
+      new import_obsidian5.Notice(this.settings.codeWrapIndent ? "Wrapped code lines indented" : "Wrapped code lines start at the left edge");
+    });
     run("toggle-section-tabs", "Show or hide section tabs", async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -4551,7 +4647,7 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     add.onclick = () => this.createSection(nb);
   }
   /* ---------- popovers ---------- */
-  showPopover(anchor, build2, pos) {
+  showPopover(anchor, build3, pos) {
     this.closePopover();
     const pop = document.body.createDiv("onenote-popover");
     const close = () => {
@@ -4567,7 +4663,7 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       if (e.key === "Escape") close();
     };
     pop.addEventListener("mousedown", (e) => e.preventDefault());
-    build2(pop, close);
+    build3(pop, close);
     const r = !anchor ? { left: pos.x, bottom: pos.y } : anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     pop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
     pop.style.top = Math.min(r.bottom + 2, window.innerHeight - pop.offsetHeight - 8) + "px";

@@ -1153,3 +1153,10 @@ li.task-list-item:is([data-task="!"], [data-task="?"], [data-task="*"], [data-ta
   margin: 0 4px;
   background: var(--background-modifier-border);
 }
+
+/* Hanging indent for wrapped code-block lines (src/wrap-indent.js). The base is
+   Obsidian's own left padding of a code-block line. */
+.markdown-source-view.mod-cm6 .cm-line.HyperMD-codeblock.onenote-hang {
+  text-indent: calc(-1 * var(--onenote-hang));
+  padding-inline-start: calc(var(--size-4-4) + var(--onenote-hang));
+}

@@ -25,6 +25,7 @@ import { executeCommand, mountPoint, openSettings, isPluginEnabled, setDarkMode,
 import { isSyncCommand, syncingCommands } from './ribbon/state.js';
 import { groupUnderParents } from './subpages.js';
 import { hideSyntax } from './syntax.js';
+import { wrapIndent } from './wrap-indent.js';
 import { QuickBar } from './quickbar.js';
 import { editSelection, clearFormatting, plainText } from './selection-format.js';
 
@@ -123,6 +124,7 @@ const DEFAULT_SETTINGS = {
   hideSyntax: true, // Live Preview never shows Markdown syntax, not even on the cursor line
   syntaxGuard: true, // with hidden syntax: notes that open in Source mode switch to Live Preview
   quickBar: true, // floating toolbar above selected text
+  codeWrapIndent: true, // wrapped code-block lines start under the first word of their line
   oneNoteHotkeys: false, // OneNote's keyboard shortcuts are opt-in (Obsidian's guideline: no default hotkeys)
   pageFont: 'Calibri, Carlito, "Segoe UI", sans-serif',
   uiFont: '"Segoe UI", system-ui, sans-serif',
@@ -686,6 +688,9 @@ class OneNoteSettingTab extends PluginSettingTab {
     new Setting(el).setName('Quick Bar')
       .setDesc('A small toolbar above selected text: bold, italic, strikethrough, highlight colours, link, copy, clear formatting. Also the command "Toggle Quick Bar".')
       .addToggle((t) => t.setValue(s.quickBar).onChange((v) => p.setQuickBar(v)));
+    new Setting(el).setName('Indent wrapped code lines')
+      .setDesc('In a code block, a long line that wraps continues under the first word of its line, past its tabs and a list number like "3.", instead of at the left edge. Only the look changes, not the text. Also the command "Toggle wrapped-line indent in code blocks".')
+      .addToggle((t) => t.setValue(s.codeWrapIndent).onChange((v) => p.setCodeWrapIndent(v)));
 
     new Setting(el).setName('Pages').setHeading();
     new Setting(el).setName('New page name')
@@ -768,6 +773,9 @@ class OneNotePlugin extends Plugin {
     this.syntaxExtension = [];
     this.registerEditorExtension(this.syntaxExtension);
     this.applyHideSyntax();
+    this.wrapExtension = [];
+    this.registerEditorExtension(this.wrapExtension);
+    this.applyCodeWrapIndent();
     this.quickBar = new QuickBar(this);
     this.quickBar.mount();
 
@@ -1487,6 +1495,18 @@ class OneNotePlugin extends Plugin {
     }
   }
 
+  applyCodeWrapIndent() {
+    this.wrapExtension.length = 0;
+    if (this.settings.codeWrapIndent) this.wrapExtension.push(wrapIndent);
+    this.app.workspace.updateOptions();
+  }
+
+  async setCodeWrapIndent(on) {
+    this.settings.codeWrapIndent = !!on;
+    this.applyCodeWrapIndent();
+    await this.persist();
+  }
+
   async setQuickBar(on) {
     this.settings.quickBar = !!on;
     if (!on) this.quickBar.hide();
@@ -1787,6 +1807,10 @@ class OneNotePlugin extends Plugin {
     run('toggle-quick-bar', 'Toggle Quick Bar', async () => {
       await this.setQuickBar(!this.settings.quickBar);
       new Notice(this.settings.quickBar ? 'Quick Bar on' : 'Quick Bar off');
+    });
+    run('toggle-code-wrap-indent', 'Toggle wrapped-line indent in code blocks', async () => {
+      await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
+      new Notice(this.settings.codeWrapIndent ? 'Wrapped code lines indented' : 'Wrapped code lines start at the left edge');
     });
     run('toggle-section-tabs', 'Show or hide section tabs', async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;

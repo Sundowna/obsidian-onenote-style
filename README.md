@@ -4,7 +4,7 @@
 
 **Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of Karpathy's LLM wiki. The other pieces: [AI ChatBridge](https://community.obsidian.md/plugins/ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://community.obsidian.md/themes/onenote-style) (the look you already know).
 
-**New in 2.1:** [edit like in OneNote and Word](#onenote-extras) - no Markdown syntax while you type, and a **Quick Bar** for selected text. See the [releases](https://github.com/Sundowna/obsidian-onenote-style/releases) for everything else.
+**New in 2.3:** [wrapped lines in code blocks keep their indent](#onenote-extras) - a long line continues under its first word, not at the left edge. Since 2.1: no Markdown syntax while you type, and a **Quick Bar** for selected text. See the [releases](https://github.com/Sundowna/obsidian-onenote-style/releases) for everything else.
 
 ![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 
@@ -74,6 +74,7 @@ The ribbon is the main thing. These come with it:
 - **Syntax Guard.** While syntax is hidden, a note that opens in Source mode switches to Live Preview. The **Source Mode** button still shows the Markdown when you want it, until you open another note.
 - **Quick Bar.** Select text and a small toolbar appears above it: bold, italic, strikethrough, highlight in seven colours, **No colour**, internal link, copy and clear formatting. Every button toggles, and the selection stays, so you can apply several in a row. Coloured highlights are written as `<mark style="background: #FFF3A3A6;">text</mark>`, the same format as the Highlightr plugin.
 - **All three are on by default.** Turn each off and on with its button in the **Editing** group on the Home tab (**Syntax**, **Syntax Guard**, **Quick Bar**), its command (**Toggle syntax visibility**, **Toggle Syntax Guard**, **Toggle Quick Bar**) or its switch under **Settings → OneNote Style → Editing**.
+- **Wrapped code lines keep their indent.** In a code block, a long line that wraps continues under the first word of its line, past its tabs or spaces and a list marker like `3.` or `-`, instead of at the left edge. It works while you type, in Live Preview and Source mode, and changes only the look, not the text. On by default; turn it off with the command **Toggle wrapped-line indent in code blocks** or under **Settings → OneNote Style → Editing**.
 - **Note tags.** To Do, Important, Question, Remember for later, Definition and Idea, with a **Tags Summary** across the section, notebook or vault. They are stored as task statuses (`- [!] Call the bank`), so your notes stay plain Markdown.
 - **Subpages without folders.** A subpage is a plain note next to its parent that names the parent in a property (`parent: "[[Parent page]]"`). In Obsidian's file explorer it sits under its parent, indented, with a small "L", and your sort order applies within each level.
 - **Page title with date**, page colours, rule lines, page width, date and time stamps, a table grid picker and a symbol picker.
@@ -146,6 +147,8 @@ src/main.js              the plugin (commands, note tags, subpages, panes, setti
 src/subpages.js          subpage ordering (pure, unit-tested)
 src/syntax.js            hides Markdown syntax in Live Preview (editor extension)
 src/syntax-rules.js      which tokens count as syntax (pure, unit-tested)
+src/wrap-indent.js       hanging indent for wrapped code-block lines (editor extension)
+src/hang-rules.js        how far a wrapped code line is indented (pure, unit-tested)
 src/quickbar.js          the Quick Bar; its buttons are the list QUICK_BAR_ACTIONS, its colours HIGHLIGHTS
 src/selection-format.js  toggling formatting on the selection (pure, unit-tested)
 src/ribbon/model.js      ribbon layout: tabs, groups, buttons (pure, unit-tested)

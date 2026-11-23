@@ -176,8 +176,11 @@ body.is-hidden-frameless.mod-linux:not(.is-fullscreen) .onenote-tabrow {
 body.is-hidden-frameless.mod-macos:not(.is-fullscreen) .onenote-tabrow {
   padding-left: max(var(--frame-left-space, 0px), 80px);
 }
-body.is-hidden-frameless.onenote-has-topbar .titlebar,
-body.is-hidden-frameless.onenote-has-topbar .titlebar-inner { -webkit-app-region: no-drag; }
+/* Not in Obsidian's own pop-out windows (Settings, Community plugins): they
+   copy the body classes but have no top bar, and their title bar is the only
+   place to drag the window by. */
+body.is-hidden-frameless.onenote-has-topbar:not(.is-popout-modal) .titlebar,
+body.is-hidden-frameless.onenote-has-topbar:not(.is-popout-modal) .titlebar-inner { -webkit-app-region: no-drag; }
 .onenote-tabrow > *:not(.onenote-tabrow-spacer) { -webkit-app-region: no-drag; }
 
 /* Top left: Obsidian pins its "toggle left sidebar" button to the top of the

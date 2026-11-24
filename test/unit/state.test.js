@@ -23,6 +23,7 @@ test('pressed: each mode presses its own button and no other', () => {
     [{ settings: { syntaxGuard: true } }, O + 'toggle-syntax-guard'],
     [{ settings: { quickBar: true } }, O + 'toggle-quick-bar'],
     [{ settings: { showSectionTabs: true } }, O + 'toggle-section-tabs'],
+    [{ settings: { autoCollapseRibbon: true } }, O + 'toggle-auto-collapse-ribbon'],
     [{ fullPage: true }, O + 'full-page-view'],
     [{ mode: 'preview' }, 'markdown:toggle-preview'],
     [{ mode: 'source' }, 'editor:toggle-source'],

@@ -60,6 +60,8 @@ export function prepareVault() {
       if (d.state) for (const k of ['order', 'levels', 'lastPage', 'lastSection', 'expanded', 'colors']) d.state[k] = {};
       // The tests expect the ribbon open, whatever it is in the Test vault right now.
       if (d.state) { d.state.notebook = ''; d.state.section = ''; d.state.ribbonCollapsed = false; }
+      // Auto-collapse would fold the ribbon on every click in the page; its tests turn it on.
+      if (d.settings) d.settings.autoCollapseRibbon = false;
       fs.mkdirSync(path.join(dst, 'plugins', 'onenote-style'), { recursive: true });
       fs.writeFileSync(path.join(dst, 'plugins', 'onenote-style', 'data.json'), JSON.stringify(d, null, 2));
     }

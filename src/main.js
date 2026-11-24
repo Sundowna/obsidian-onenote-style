@@ -117,6 +117,7 @@ const DEFAULT_SETTINGS = {
   pagesPanePosition: 'docked', // under the file list, so subpages are always visible
   applyTheme: true,
   showRibbon: true,
+  autoCollapseRibbon: false, // collapse the ribbon again after a button runs a command
   showSectionTabs: true,
   showNavigation: false, // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
   showPageDate: true,
@@ -649,6 +650,8 @@ class OneNoteSettingTab extends PluginSettingTab {
       .addToggle((t) => t.setValue(s.applyTheme).onChange(async (v) => { s.applyTheme = v; await changed(); }));
     new Setting(el).setName('Show ribbon').setDesc('The Office-style ribbon across the top.')
       .addToggle((t) => t.setValue(s.showRibbon).onChange(async (v) => { s.showRibbon = v; await changed(true); }));
+    new Setting(el).setName('Auto-collapse the ribbon').setDesc('The ribbon folds away after you click a command or click anywhere else, leaving just the tabs. Click a tab to open it again.')
+      .addToggle((t) => t.setValue(s.autoCollapseRibbon).onChange((v) => p.setAutoCollapseRibbon(v)));
     new Setting(el).setName('Show section tabs').setDesc('Colored section tabs above the page.')
       .addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => { s.showSectionTabs = v; await changed(true); }));
     new Setting(el).setName('Show page date and time').setDesc('Shown under the page title. Requires "Show inline title" in Appearance settings. Uses the "created" property when present.')
@@ -1812,6 +1815,10 @@ class OneNotePlugin extends Plugin {
       await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
       new Notice(this.settings.codeWrapIndent ? 'Wrapped code lines indented' : 'Wrapped code lines start at the left edge');
     });
+    run('toggle-auto-collapse-ribbon', 'Turn ribbon auto-collapse on or off', async () => {
+      await this.setAutoCollapseRibbon(!this.settings.autoCollapseRibbon);
+      new Notice(this.settings.autoCollapseRibbon ? 'Ribbon auto-collapse on' : 'Ribbon auto-collapse off');
+    });
     run('toggle-section-tabs', 'Show or hide section tabs', async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -1869,6 +1876,12 @@ class OneNotePlugin extends Plugin {
     }
     this.sectionTabsEl = s.showSectionTabs ? bar.createDiv('onenote-section-tabs') : null;
     this.renderSectionTabs();
+  }
+
+  async setAutoCollapseRibbon(on) {
+    this.settings.autoCollapseRibbon = !!on;
+    await this.persist();
+    if (this.ribbon) this.ribbon.refreshStates();
   }
 
   toggleRibbon() {

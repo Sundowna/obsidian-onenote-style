@@ -116,6 +116,76 @@ describe('ribbon', () => {
       expect(r.focused).toBe(true);
     });
 
+    it('auto-collapse: a click elsewhere folds the ribbon; a colour picker keeps it open until a colour is picked', async () => {
+      const collapsed = () => browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting();
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(true));
+      await withPlugin((plugin, app) => {
+        const editor = app.workspace.activeEditor.editor;
+        editor.setValue('alpha beta gamma');
+        editor.setSelection({ line: 0, ch: 6 }, { line: 0, ch: 10 });
+      });
+      // Clicks on the ribbon itself (another tab) keep it open.
+      await browser.$('.onenote-tab[data-tab="insert"]').click();
+      await pause(200);
+      expect(await collapsed()).toBe(false);
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+      // A click in the page folds it, and the click still reaches the page.
+      await browser.$('.markdown-source-view .cm-content').click();
+      await pause(250);
+      expect(await collapsed()).toBe(true);
+      expect(await withPlugin((plugin, app) => app.workspace.activeEditor.editor.hasFocus())).toBe(true);
+      // Highlight opens a picker: the ribbon stays until a colour is picked.
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+      await withPlugin((plugin, app) => {
+        const editor = app.workspace.activeEditor.editor;
+        editor.setSelection({ line: 0, ch: 0 }, { line: 0, ch: 5 });
+        editor.focus();
+      });
+      const hl = await item('onenote-style:highlight-color');
+      await browser.$(btn(hl.id)).click();
+      await pause(200);
+      expect(await browser.$('.onenote-popover').isExisting()).toBe(true);
+      expect(await collapsed()).toBe(false);
+      await (await browser.$$('.onenote-popover .onenote-swatch'))[1].click();
+      await pause(250);
+      expect(await browser.$('.onenote-popover').isExisting()).toBe(false);
+      expect(await collapsed()).toBe(true);
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+    });
+
+    it('auto-collapse: the ribbon folds away after a command, and a tab click opens it again', async () => {
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+      await rightClick('.onenote-ribbon .onenote-ribbon-collapse');
+      expect(await menuTitles()).toContain('Auto-collapse after a command');
+      await clickMenu('Auto-collapse after a command');
+      expect(await withPlugin((plugin) => plugin.settings.autoCollapseRibbon)).toBe(true);
+      await withPlugin((plugin, app) => {
+        const editor = app.workspace.activeEditor.editor;
+        editor.setValue('alpha beta gamma');
+        editor.setSelection({ line: 0, ch: 6 }, { line: 0, ch: 10 });
+        editor.focus();
+      });
+      const bold = await item('editor:toggle-bold');
+      await browser.$(btn(bold.id)).click();
+      await pause(200);
+      expect(await withPlugin((plugin, app) => app.workspace.activeEditor.editor.getValue())).toBe('alpha **beta** gamma');
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(true);
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
+      // The command turns it off again; then a button leaves the ribbon open.
+      await withPlugin((plugin, app) => app.commands.executeCommandById('onenote-style:toggle-auto-collapse-ribbon'));
+      await pause(200);
+      expect(await withPlugin((plugin) => plugin.settings.autoCollapseRibbon)).toBe(false);
+      await browser.$(btn(bold.id)).click();
+      await pause(200);
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
+    });
+
     it('a picker opens under the button that was clicked', async () => {
       await selectTab('insert');
       const table = await item('onenote-style:insert-table-grid');

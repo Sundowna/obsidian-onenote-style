@@ -22,6 +22,7 @@ const TOGGLES = {
   [O + 'toggle-syntax-guard']: (c) => !!c.settings.syntaxGuard,
   [O + 'toggle-quick-bar']: (c) => !!c.settings.quickBar,
   [O + 'toggle-section-tabs']: (c) => !!c.settings.showSectionTabs,
+  [O + 'toggle-auto-collapse-ribbon']: (c) => !!c.settings.autoCollapseRibbon,
   [O + 'full-page-view']: (c) => !!c.fullPage,
   [O + 'use-light-mode']: (c) => !c.dark,
   [O + 'use-dark-mode']: (c) => !!c.dark,

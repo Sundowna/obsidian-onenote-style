@@ -646,6 +646,7 @@ var TOGGLES = {
   [O + "toggle-syntax-guard"]: (c) => !!c.settings.syntaxGuard,
   [O + "toggle-quick-bar"]: (c) => !!c.settings.quickBar,
   [O + "toggle-section-tabs"]: (c) => !!c.settings.showSectionTabs,
+  [O + "toggle-auto-collapse-ribbon"]: (c) => !!c.settings.autoCollapseRibbon,
   [O + "full-page-view"]: (c) => !!c.fullPage,
   [O + "use-light-mode"]: (c) => !c.dark,
   [O + "use-dark-mode"]: (c) => !!c.dark,
@@ -724,6 +725,9 @@ var RibbonView = class {
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onDragKey = this.onDragKey.bind(this);
+    this.onOutsideDown = this.onOutsideDown.bind(this);
+    this.onOutsideUp = this.onOutsideUp.bind(this);
+    this.outsideDown = false;
   }
   get layout() {
     return this.host.ribbonLayout;
@@ -744,6 +748,9 @@ var RibbonView = class {
     topBar.addEventListener("click", this.onClick);
     topBar.addEventListener("contextmenu", this.onContextMenu);
     topBar.addEventListener("pointerdown", this.onPointerDown);
+    this.listenDoc = topBar.ownerDocument;
+    this.listenDoc.addEventListener("pointerdown", this.onOutsideDown, true);
+    this.listenDoc.addEventListener("pointerup", this.onOutsideUp, true);
     let frame = 0;
     this.observer = new ResizeObserver(() => {
       if (frame) return;
@@ -797,6 +804,12 @@ var RibbonView = class {
       this.topBar.removeEventListener("contextmenu", this.onContextMenu);
       this.topBar.removeEventListener("pointerdown", this.onPointerDown);
     }
+    if (this.listenDoc) {
+      this.listenDoc.removeEventListener("pointerdown", this.onOutsideDown, true);
+      this.listenDoc.removeEventListener("pointerup", this.onOutsideUp, true);
+    }
+    this.listenDoc = null;
+    this.outsideDown = false;
     this.topBar = this.tabsEl = this.bodyEl = this.strip = null;
   }
   render() {
@@ -1261,7 +1274,32 @@ var RibbonView = class {
       new import_obsidian2.Notice(`"${this.labelOf(found.item, null)}" is not available. ${missingReason(this.app, found.item.command)}`);
       return;
     }
-    this.host.runRibbonCommand(found.item.command);
+    const ok = this.host.runRibbonCommand(found.item.command);
+    const state = this.host.state;
+    const own = found.item.command === "onenote-style:toggle-auto-collapse-ribbon";
+    const picking = !!this.doc.querySelector(".onenote-popover");
+    if (ok && !own && !picking && this.autoCollapses()) this.host.toggleRibbon();
+  }
+  /** Auto-collapse is on and the ribbon is open, so a finished command or an outside click folds it. */
+  autoCollapses() {
+    return !!this.host.settings.autoCollapseRibbon && !this.editing && !this.drag && !!this.topBar && !this.host.state.ribbonCollapsed;
+  }
+  /*
+   * Auto-collapse also folds the ribbon when the user clicks somewhere else without
+   * running a command. Menus, dialogs, notices and the ribbon's own drop-downs don't
+   * count: they belong to what the user is doing with the ribbon. The ribbon folds after
+   * the click is over, so the page doesn't move under the pointer mid-click.
+   */
+  onOutsideDown(e) {
+    const t = e.target;
+    this.outsideDown = this.autoCollapses() && !!t && !!t.closest && !this.topBar.contains(t) && !t.closest(".onr-popover, .menu, .modal-container, .notice-container, .tooltip");
+  }
+  onOutsideUp() {
+    if (!this.outsideDown) return;
+    this.outsideDown = false;
+    window.setTimeout(() => {
+      if (this.autoCollapses()) this.host.toggleRibbon();
+    }, 0);
   }
   /* ---------- right-click menus ---------- */
   onContextMenu(e) {
@@ -1440,6 +1478,8 @@ var RibbonView = class {
     if (!onTab) {
       menu.addSeparator();
       menu.addItem((i) => i.setTitle("Collapse the ribbon").setIcon("chevron-up").onClick(() => this.host.toggleRibbon()));
+      const auto = !!this.host.settings.autoCollapseRibbon;
+      menu.addItem((i) => i.setTitle("Auto-collapse after a command").setIcon("fold-vertical").setChecked(auto).onClick(() => this.host.setAutoCollapseRibbon(!auto)));
     }
     return menu;
   }
@@ -1791,7 +1831,8 @@ var TABS = [
       S(O2 + "toggle-section-tabs", "Section Tabs", "folder-kanban"),
       S("outline:open", "Outline", "list-tree"),
       S("properties:open-local", "Properties", "info"),
-      S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed")
+      S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed"),
+      S(O2 + "toggle-auto-collapse-ribbon", "Auto-Collapse", "fold-vertical")
     ]),
     G("view-window", "Window", [
       S("workspace:split-vertical", "Split Right", "separator-vertical"),
@@ -2784,6 +2825,8 @@ var DEFAULT_SETTINGS = {
   // under the file list, so subpages are always visible
   applyTheme: true,
   showRibbon: true,
+  autoCollapseRibbon: false,
+  // collapse the ribbon again after a button runs a command
   showSectionTabs: true,
   showNavigation: false,
   // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
@@ -3306,6 +3349,7 @@ var OneNoteSettingTab = class extends import_obsidian5.PluginSettingTab {
       s.showRibbon = v;
       await changed(true);
     }));
+    new import_obsidian5.Setting(el).setName("Auto-collapse the ribbon").setDesc("The ribbon folds away after you click a command or click anywhere else, leaving just the tabs. Click a tab to open it again.").addToggle((t) => t.setValue(s.autoCollapseRibbon).onChange((v) => p.setAutoCollapseRibbon(v)));
     new import_obsidian5.Setting(el).setName("Show section tabs").setDesc("Colored section tabs above the page.").addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => {
       s.showSectionTabs = v;
       await changed(true);
@@ -4400,6 +4444,10 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
       new import_obsidian5.Notice(this.settings.codeWrapIndent ? "Wrapped code lines indented" : "Wrapped code lines start at the left edge");
     });
+    run("toggle-auto-collapse-ribbon", "Turn ribbon auto-collapse on or off", async () => {
+      await this.setAutoCollapseRibbon(!this.settings.autoCollapseRibbon);
+      new import_obsidian5.Notice(this.settings.autoCollapseRibbon ? "Ribbon auto-collapse on" : "Ribbon auto-collapse off");
+    });
     run("toggle-section-tabs", "Show or hide section tabs", async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -4450,6 +4498,11 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     }
     this.sectionTabsEl = s.showSectionTabs ? bar.createDiv("onenote-section-tabs") : null;
     this.renderSectionTabs();
+  }
+  async setAutoCollapseRibbon(on) {
+    this.settings.autoCollapseRibbon = !!on;
+    await this.persist();
+    if (this.ribbon) this.ribbon.refreshStates();
   }
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;

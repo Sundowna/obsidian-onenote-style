@@ -699,8 +699,26 @@ function syncingCommands(sync, started) {
   return out;
 }
 
+// src/ribbon/titlebar.js
+var DRAG_THRESHOLD = 4;
+function stripOpensRibbon({ autoCollapse, collapsed, editing }) {
+  return !!autoCollapse && !!collapsed && !editing;
+}
+function isDrag(dx, dy, threshold = DRAG_THRESHOLD) {
+  return Math.abs(dx) > threshold || Math.abs(dy) > threshold;
+}
+function windowPosition(start, screenX, screenY) {
+  const dx = screenX - start.screenX;
+  const dy = screenY - start.screenY;
+  if (start.ratio == null) return { x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+  return {
+    x: Math.round(screenX - start.ratio * start.width),
+    y: Math.round(start.y + dy)
+  };
+}
+
 // src/ribbon/view.js
-var DRAG_THRESHOLD = 6;
+var DRAG_THRESHOLD2 = 6;
 var TAB_HOVER_MS = 450;
 var COLOR_LABEL = { accent: "Accent", red: "Red", orange: "Orange", yellow: "Yellow", green: "Green", cyan: "Cyan", blue: "Blue", purple: "Purple", pink: "Pink", none: "No colour" };
 var PRIORITY_LABEL = { first: "Shrink first", normal: "Shrink normally", last: "Shrink last" };
@@ -728,6 +746,11 @@ var RibbonView = class {
     this.onOutsideDown = this.onOutsideDown.bind(this);
     this.onOutsideUp = this.onOutsideUp.bind(this);
     this.outsideDown = false;
+    this.onStripDown = this.onStripDown.bind(this);
+    this.onStripMove = this.onStripMove.bind(this);
+    this.onStripUp = this.onStripUp.bind(this);
+    this.stripEl = null;
+    this.stripPress = null;
   }
   get layout() {
     return this.host.ribbonLayout;
@@ -748,6 +771,8 @@ var RibbonView = class {
     topBar.addEventListener("click", this.onClick);
     topBar.addEventListener("contextmenu", this.onContextMenu);
     topBar.addEventListener("pointerdown", this.onPointerDown);
+    this.stripEl = topBar.querySelector(".onenote-tabrow-spacer");
+    if (this.stripEl) this.stripEl.addEventListener("pointerdown", this.onStripDown);
     this.listenDoc = topBar.ownerDocument;
     this.listenDoc.addEventListener("pointerdown", this.onOutsideDown, true);
     this.listenDoc.addEventListener("pointerup", this.onOutsideUp, true);
@@ -804,6 +829,9 @@ var RibbonView = class {
       this.topBar.removeEventListener("contextmenu", this.onContextMenu);
       this.topBar.removeEventListener("pointerdown", this.onPointerDown);
     }
+    this.endStripPress();
+    if (this.stripEl) this.stripEl.removeEventListener("pointerdown", this.onStripDown);
+    this.stripEl = null;
     if (this.listenDoc) {
       this.listenDoc.removeEventListener("pointerdown", this.onOutsideDown, true);
       this.listenDoc.removeEventListener("pointerup", this.onOutsideUp, true);
@@ -931,6 +959,7 @@ var RibbonView = class {
     this.fitKey = null;
     const collapsed = !!this.host.state.ribbonCollapsed;
     this.topBar.toggleClass("is-ribbon-collapsed", collapsed);
+    this.syncStrip();
     if (collapsed) return;
     this.strip = el.createDiv("onr-strip");
     const collapseKeys = hotkeyText(this.app, "onenote-style:toggle-ribbon");
@@ -1301,6 +1330,107 @@ var RibbonView = class {
       if (this.autoCollapses()) this.host.toggleRibbon();
     }, 0);
   }
+  /* ---------- the empty strip of the tab row ---------- */
+  /*
+   * With auto-collapse on and the ribbon folded, a click on the empty strip between the
+   * last tab and the search field opens the ribbon again (on the tab that was open), like
+   * a tab click. On desktop that strip is normally a window-drag area, which the page
+   * never gets clicks from. So while the strip can open the ribbon it is not a drag area
+   * (class onr-strip-opens, see styles.css): a plain click opens the ribbon, and a press
+   * that moves more than a few pixels moves the window instead, done here through
+   * Electron. Without Electron's window object (should Obsidian ever stop providing it)
+   * the strip stays a native drag area in frameless windows and only tab clicks open the
+   * ribbon there; where the strip isn't a drag area (framed windows, mobile) a click
+   * always works.
+   */
+  stripOpens() {
+    if (!this.topBar || !this.stripEl) return false;
+    const on = stripOpensRibbon({
+      autoCollapse: this.host.settings.autoCollapseRibbon,
+      collapsed: this.host.state.ribbonCollapsed,
+      editing: this.editing
+    });
+    if (!on) return false;
+    const frameless = this.doc.body.hasClass("is-hidden-frameless");
+    return !frameless || !!electronWindow();
+  }
+  /** Call when auto-collapse, the collapsed state or customise mode changes. */
+  syncStrip() {
+    if (!this.topBar) return;
+    const on = this.stripOpens();
+    this.topBar.toggleClass("onr-strip-opens", on);
+    if (!on) this.endStripPress();
+  }
+  onStripDown(e) {
+    if (e.button !== 0 || !this.topBar || !this.topBar.hasClass("onr-strip-opens")) return;
+    this.endStripPress();
+    const el = this.stripEl;
+    this.stripPress = { id: e.pointerId, screenX: e.screenX, screenY: e.screenY, clientY: e.clientY, moving: null, cancelled: false, frame: 0 };
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch (err) {
+    }
+    el.addEventListener("pointermove", this.onStripMove);
+    el.addEventListener("pointerup", this.onStripUp);
+    el.addEventListener("pointercancel", this.onStripUp);
+    el.addEventListener("lostpointercapture", this.onStripUp);
+  }
+  onStripMove(e) {
+    const p = this.stripPress;
+    if (!p || p.cancelled || e.pointerId !== p.id) return;
+    if (!p.moving) {
+      if (!isDrag(e.screenX - p.screenX, e.screenY - p.screenY)) return;
+      const win = electronWindow();
+      if (!win || !this.doc.body.hasClass("is-hidden-frameless") || safe(() => win.isFullScreen())) {
+        p.cancelled = true;
+        return;
+      }
+      if (safe(() => win.isMaximized())) {
+        const ratio = Math.min(1, Math.max(0, e.clientX / Math.max(1, this.doc.defaultView.innerWidth)));
+        safe(() => win.unmaximize());
+        const size = safe(() => win.getSize()) || [this.doc.defaultView.innerWidth];
+        p.moving = { win, start: { ratio, width: size[0], y: p.screenY - p.clientY, screenX: p.screenX, screenY: p.screenY } };
+      } else {
+        const pos = safe(() => win.getPosition());
+        if (!pos) {
+          p.cancelled = true;
+          return;
+        }
+        p.moving = { win, start: { x: pos[0], y: pos[1], screenX: p.screenX, screenY: p.screenY } };
+      }
+    }
+    p.last = { x: e.screenX, y: e.screenY };
+    if (p.frame) return;
+    p.frame = window.requestAnimationFrame(() => {
+      p.frame = 0;
+      if (this.stripPress !== p || !p.moving) return;
+      const to = windowPosition(p.moving.start, p.last.x, p.last.y);
+      safe(() => p.moving.win.setPosition(to.x, to.y));
+    });
+  }
+  onStripUp(e) {
+    const p = this.stripPress;
+    if (!p || e.pointerId !== p.id) return;
+    const click = e.type === "pointerup" && !p.moving && !p.cancelled;
+    this.endStripPress();
+    if (click && this.stripOpens()) this.host.toggleRibbon();
+  }
+  endStripPress() {
+    const p = this.stripPress;
+    if (!p) return;
+    this.stripPress = null;
+    if (p.frame) window.cancelAnimationFrame(p.frame);
+    const el = this.stripEl;
+    if (!el) return;
+    el.removeEventListener("pointermove", this.onStripMove);
+    el.removeEventListener("pointerup", this.onStripUp);
+    el.removeEventListener("pointercancel", this.onStripUp);
+    el.removeEventListener("lostpointercapture", this.onStripUp);
+    try {
+      if (el.hasPointerCapture(p.id)) el.releasePointerCapture(p.id);
+    } catch (err) {
+    }
+  }
   /* ---------- right-click menus ---------- */
   onContextMenu(e) {
     const t = e.target;
@@ -1539,7 +1669,7 @@ var RibbonView = class {
     const p = this.press;
     if (!p) return;
     if (!this.drag) {
-      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD2) return;
       this.startDrag(p);
     }
     const d = this.drag;
@@ -1690,6 +1820,30 @@ var RibbonView = class {
     if (this.topBar) this.topBar.removeClass("is-dragging");
   }
 };
+var cachedWindow;
+function electronWindow() {
+  if (cachedWindow === void 0) cachedWindow = findElectronWindow();
+  return cachedWindow;
+}
+function findElectronWindow() {
+  try {
+    const req = window.require;
+    if (!req) return null;
+    const electron = req("electron");
+    const remote = electron && electron.remote || req("@electron/remote");
+    const win = remote && remote.getCurrentWindow && remote.getCurrentWindow();
+    return win && typeof win.setPosition === "function" ? win : null;
+  } catch (err) {
+    return null;
+  }
+}
+function safe(fn) {
+  try {
+    return fn();
+  } catch (err) {
+    return null;
+  }
+}
 
 // src/ribbon/defaults.js
 var O2 = "onenote-style:";
@@ -4502,7 +4656,10 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
   async setAutoCollapseRibbon(on) {
     this.settings.autoCollapseRibbon = !!on;
     await this.persist();
-    if (this.ribbon) this.ribbon.refreshStates();
+    if (this.ribbon) {
+      this.ribbon.refreshStates();
+      this.ribbon.syncStrip();
+    }
   }
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;

@@ -1881,7 +1881,10 @@ class OneNotePlugin extends Plugin {
   async setAutoCollapseRibbon(on) {
     this.settings.autoCollapseRibbon = !!on;
     await this.persist();
-    if (this.ribbon) this.ribbon.refreshStates();
+    if (this.ribbon) {
+      this.ribbon.refreshStates();
+      this.ribbon.syncStrip();
+    }
   }
 
   toggleRibbon() {

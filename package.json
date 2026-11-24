@@ -1,13 +1,13 @@
 {
   "name": "obsidian-onenote-style",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "private": true,
   "type": "module",
   "description": "OneNote Style for Obsidian, with an Office-style customisable ribbon.",
   "license": "MIT",
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "test": "node --test test/unit/",
+    "test": "node --test test/unit/*.test.js",
     "test:e2e": "npm run build && wdio run ./wdio.conf.mjs",
     "shots": "npm run build && wdio run ./wdio.conf.mjs --spec ./test/e2e/tools/showcase.e2e.mjs"
   },

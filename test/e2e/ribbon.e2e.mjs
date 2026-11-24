@@ -186,6 +186,42 @@ describe('ribbon', () => {
       expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
     });
 
+    it('auto-collapse: a click on the empty part of the tab row opens the ribbon on the same tab', async () => {
+      const collapsed = () => browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting();
+      const activeTab = () => browser.execute(() => document.querySelector('.onenote-tab.is-active')?.dataset.tab);
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(true));
+      await browser.$('.onenote-tab[data-tab="insert"]').click();
+      await pause(200);
+      await browser.$('.markdown-source-view .cm-content').click();
+      await pause(250);
+      expect(await collapsed()).toBe(true);
+      expect(await browser.$('.onenote-topbar.onr-strip-opens').isExisting()).toBe(true);
+      await browser.$('.onenote-tabrow-spacer').click();
+      await pause(200);
+      expect(await collapsed()).toBe(false);
+      expect(await activeTab()).toBe('insert');
+      // Open ribbon: the strip is a plain drag area again and a click on it changes nothing.
+      expect(await browser.$('.onenote-topbar.onr-strip-opens').isExisting()).toBe(false);
+      // Auto-collapse off: a click on the strip leaves a folded ribbon folded.
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+      await withPlugin((plugin) => plugin.toggleRibbon());
+      await pause(100);
+      expect(await collapsed()).toBe(true);
+      expect(await browser.$('.onenote-topbar.onr-strip-opens').isExisting()).toBe(false);
+      await browser.execute(() => {
+        const el = document.querySelector('.onenote-tabrow-spacer');
+        const r = el.getBoundingClientRect();
+        const at = { bubbles: true, button: 0, pointerId: 1, clientX: r.left + 4, clientY: r.top + 4 };
+        el.dispatchEvent(new PointerEvent('pointerdown', at));
+        el.dispatchEvent(new PointerEvent('pointerup', at));
+      });
+      await pause(100);
+      expect(await collapsed()).toBe(true);
+      await withPlugin((plugin) => plugin.toggleRibbon());
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+    });
+
     it('a picker opens under the button that was clicked', async () => {
       await selectTab('insert');
       const table = await item('onenote-style:insert-table-grid');

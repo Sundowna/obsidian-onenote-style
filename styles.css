@@ -182,6 +182,10 @@ body.is-hidden-frameless.mod-macos:not(.is-fullscreen) .onenote-tabrow {
 body.is-hidden-frameless.onenote-has-topbar:has(.onenote-topbar) .titlebar,
 body.is-hidden-frameless.onenote-has-topbar:has(.onenote-topbar) .titlebar-inner { -webkit-app-region: no-drag; }
 .onenote-tabrow > *:not(.onenote-tabrow-spacer) { -webkit-app-region: no-drag; }
+/* Auto-collapse with the ribbon folded: a click on the empty strip opens the ribbon.
+   A drag area never passes clicks to the page, so the strip is not one then; the
+   plugin moves the window itself when a press on it turns into a drag (view.js). */
+body .onenote-topbar.onr-strip-opens .onenote-tabrow .onenote-tabrow-spacer { -webkit-app-region: no-drag; }
 
 /* Top left: Obsidian pins its "toggle left sidebar" button to the top of the
    window, where it covered Undo / Redo. Anchor it to the icon strip instead,

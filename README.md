@@ -4,7 +4,7 @@
 
 **Part of the [Sundowna Second Brain Suite](#part-of-the-sundowna-second-brain-suite)** - an easy, low-friction second brain in Obsidian, in the spirit of Karpathy's LLM wiki. The other pieces: [AI ChatBridge](https://community.obsidian.md/plugins/ai-chatbridge) (all your AI chats in your vault) and the [OneNote Style theme](https://community.obsidian.md/themes/onenote-style) (the look you already know).
 
-**New in 2.4:** the ribbon can **auto-collapse** - it folds away after you click a command, like OneNote. Since 2.3: wrapped lines in code blocks keep their indent. Since 2.1: no Markdown syntax while you type, and a **Quick Bar** for selected text. See the [releases](https://github.com/Sundowna/obsidian-onenote-style/releases) for everything else.
+**New in 2.4:** the ribbon can **auto-collapse** - it folds away after you click a command or click anywhere else, like OneNote. Since 2.3: wrapped lines in code blocks keep their indent. Since 2.1: no Markdown syntax while you type, and a **Quick Bar** for selected text. See the [releases](https://github.com/Sundowna/obsidian-onenote-style/releases) for everything else.
 
 ![The ribbon in light mode](docs/screenshots/1-ribbon-light.png)
 
@@ -106,7 +106,7 @@ Needs Obsidian 1.10.6 or newer, on desktop: Windows, macOS or Linux.
 - **It restyles a little.** By default the plugin sets a purple accent colour, Segoe UI and Calibri. To keep your own look, turn off **OneNote theme** in the plugin's settings. The ribbon itself always follows your theme.
 - **Obsidian's own ribbon stays.** The icon strip on the left and Obsidian's menus are not touched.
 - **Collapse the ribbon** with a double-click on a tab or the small arrow at its right end.
-- **Auto-collapse:** turn on "Auto-collapse after a command" (right-click an empty part of the ribbon, in the settings, or with the command "Turn ribbon auto-collapse on or off", which you can also put on the ribbon or give a hotkey) and the ribbon folds away after each command. Click a tab to open it again.
+- **Auto-collapse:** turn on "Auto-collapse after a command" (right-click an empty part of the ribbon, in the settings, or with the command "Turn ribbon auto-collapse on or off", which you can also put on the ribbon or give a hotkey) and the ribbon folds away after each command, or when you click anywhere else. Click a tab to open it again.
 - **Subpages in Notebook Navigator** are indented and marked, but that plugin keeps its own sort order.
 - **Pages made with version 1.x** that turned a parent page into a folder can be converted back with the command **Turn page folder into plain subpages**.
 - **Not possible in Markdown:** OneNote's click-anywhere canvas. For that, **Insert → Canvas Page** creates an Obsidian Canvas. Ink, audio recording and OneNote import are not included.

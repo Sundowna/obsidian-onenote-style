@@ -3349,7 +3349,7 @@ var OneNoteSettingTab = class extends import_obsidian5.PluginSettingTab {
       s.showRibbon = v;
       await changed(true);
     }));
-    new import_obsidian5.Setting(el).setName("Auto-collapse the ribbon").setDesc("The ribbon folds away after you click a command, leaving just the tabs. Click a tab to open it again.").addToggle((t) => t.setValue(s.autoCollapseRibbon).onChange((v) => p.setAutoCollapseRibbon(v)));
+    new import_obsidian5.Setting(el).setName("Auto-collapse the ribbon").setDesc("The ribbon folds away after you click a command or click anywhere else, leaving just the tabs. Click a tab to open it again.").addToggle((t) => t.setValue(s.autoCollapseRibbon).onChange((v) => p.setAutoCollapseRibbon(v)));
     new import_obsidian5.Setting(el).setName("Show section tabs").setDesc("Colored section tabs above the page.").addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => {
       s.showSectionTabs = v;
       await changed(true);

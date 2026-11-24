@@ -148,7 +148,7 @@ describe('ribbon', () => {
       await pause(200);
       expect(await browser.$('.onenote-popover').isExisting()).toBe(true);
       expect(await collapsed()).toBe(false);
-      await browser.$('.onenote-popover .onenote-swatch').click();
+      await (await browser.$$('.onenote-popover .onenote-swatch'))[1].click();
       await pause(250);
       expect(await browser.$('.onenote-popover').isExisting()).toBe(false);
       expect(await collapsed()).toBe(true);
@@ -158,6 +158,7 @@ describe('ribbon', () => {
     });
 
     it('auto-collapse: the ribbon folds away after a command, and a tab click opens it again', async () => {
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
       await rightClick('.onenote-ribbon .onenote-ribbon-collapse');
       expect(await menuTitles()).toContain('Auto-collapse after a command');
       await clickMenu('Auto-collapse after a command');

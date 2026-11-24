@@ -46,6 +46,9 @@ export class RibbonView {
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onDragKey = this.onDragKey.bind(this);
+    this.onOutsideDown = this.onOutsideDown.bind(this);
+    this.onOutsideUp = this.onOutsideUp.bind(this);
+    this.outsideDown = false;
   }
 
   get layout() { return this.host.ribbonLayout; }
@@ -67,6 +70,9 @@ export class RibbonView {
     topBar.addEventListener('click', this.onClick);
     topBar.addEventListener('contextmenu', this.onContextMenu);
     topBar.addEventListener('pointerdown', this.onPointerDown);
+    this.listenDoc = topBar.ownerDocument;
+    this.listenDoc.addEventListener('pointerdown', this.onOutsideDown, true);
+    this.listenDoc.addEventListener('pointerup', this.onOutsideUp, true);
     let frame = 0;
     this.observer = new ResizeObserver(() => {
       if (frame) return;
@@ -119,6 +125,12 @@ export class RibbonView {
       this.topBar.removeEventListener('contextmenu', this.onContextMenu);
       this.topBar.removeEventListener('pointerdown', this.onPointerDown);
     }
+    if (this.listenDoc) {
+      this.listenDoc.removeEventListener('pointerdown', this.onOutsideDown, true);
+      this.listenDoc.removeEventListener('pointerup', this.onOutsideUp, true);
+    }
+    this.listenDoc = null;
+    this.outsideDown = false;
     this.topBar = this.tabsEl = this.bodyEl = this.strip = null;
   }
 
@@ -614,7 +626,33 @@ export class RibbonView {
     // auto-collapse on: the pressed button should stay in view).
     const state = this.host.state;
     const own = found.item.command === 'onenote-style:toggle-auto-collapse-ribbon';
-    if (ok && !own && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
+    // A command that opened a picker (highlight, font colour) keeps the ribbon open until
+    // the user has picked: that click lands outside the ribbon and collapses it then.
+    const picking = !!this.doc.querySelector('.onenote-popover');
+    if (ok && !own && !picking && this.autoCollapses()) this.host.toggleRibbon();
+  }
+
+  /** Auto-collapse is on and the ribbon is open, so a finished command or an outside click folds it. */
+  autoCollapses() {
+    return !!this.host.settings.autoCollapseRibbon && !this.editing && !this.drag && !!this.topBar && !this.host.state.ribbonCollapsed;
+  }
+
+  /*
+   * Auto-collapse also folds the ribbon when the user clicks somewhere else without
+   * running a command. Menus, dialogs, notices and the ribbon's own drop-downs don't
+   * count: they belong to what the user is doing with the ribbon. The ribbon folds after
+   * the click is over, so the page doesn't move under the pointer mid-click.
+   */
+  onOutsideDown(e) {
+    const t = e.target;
+    this.outsideDown = this.autoCollapses() && !!t && !!t.closest && !this.topBar.contains(t)
+      && !t.closest('.onr-popover, .menu, .modal-container, .notice-container, .tooltip');
+  }
+
+  onOutsideUp() {
+    if (!this.outsideDown) return;
+    this.outsideDown = false;
+    window.setTimeout(() => { if (this.autoCollapses()) this.host.toggleRibbon(); }, 0);
   }
 
   /* ---------- right-click menus ---------- */

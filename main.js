@@ -646,6 +646,7 @@ var TOGGLES = {
   [O + "toggle-syntax-guard"]: (c) => !!c.settings.syntaxGuard,
   [O + "toggle-quick-bar"]: (c) => !!c.settings.quickBar,
   [O + "toggle-section-tabs"]: (c) => !!c.settings.showSectionTabs,
+  [O + "toggle-auto-collapse-ribbon"]: (c) => !!c.settings.autoCollapseRibbon,
   [O + "full-page-view"]: (c) => !!c.fullPage,
   [O + "use-light-mode"]: (c) => !c.dark,
   [O + "use-dark-mode"]: (c) => !!c.dark,
@@ -1263,7 +1264,8 @@ var RibbonView = class {
     }
     const ok = this.host.runRibbonCommand(found.item.command);
     const state = this.host.state;
-    if (ok && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
+    const own = found.item.command === "onenote-style:toggle-auto-collapse-ribbon";
+    if (ok && !own && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
   }
   /* ---------- right-click menus ---------- */
   onContextMenu(e) {
@@ -1795,7 +1797,8 @@ var TABS = [
       S(O2 + "toggle-section-tabs", "Section Tabs", "folder-kanban"),
       S("outline:open", "Outline", "list-tree"),
       S("properties:open-local", "Properties", "info"),
-      S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed")
+      S("app:toggle-ribbon", "Icon Strip", "panel-left-dashed"),
+      S(O2 + "toggle-auto-collapse-ribbon", "Auto-Collapse", "fold-vertical")
     ]),
     G("view-window", "Window", [
       S("workspace:split-vertical", "Split Right", "separator-vertical"),
@@ -4407,6 +4410,10 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
       await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
       new import_obsidian5.Notice(this.settings.codeWrapIndent ? "Wrapped code lines indented" : "Wrapped code lines start at the left edge");
     });
+    run("toggle-auto-collapse-ribbon", "Turn ribbon auto-collapse on or off", async () => {
+      await this.setAutoCollapseRibbon(!this.settings.autoCollapseRibbon);
+      new import_obsidian5.Notice(this.settings.autoCollapseRibbon ? "Ribbon auto-collapse on" : "Ribbon auto-collapse off");
+    });
     run("toggle-section-tabs", "Show or hide section tabs", async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -4461,6 +4468,7 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
   async setAutoCollapseRibbon(on) {
     this.settings.autoCollapseRibbon = !!on;
     await this.persist();
+    if (this.ribbon) this.ribbon.refreshStates();
   }
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;

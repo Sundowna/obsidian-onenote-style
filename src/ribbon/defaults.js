@@ -160,6 +160,7 @@ const TABS = [
       S('outline:open', 'Outline', 'list-tree'),
       S('properties:open-local', 'Properties', 'info'),
       S('app:toggle-ribbon', 'Icon Strip', 'panel-left-dashed'),
+      S(O + 'toggle-auto-collapse-ribbon', 'Auto-Collapse', 'fold-vertical'),
     ]),
     G('view-window', 'Window', [
       S('workspace:split-vertical', 'Split Right', 'separator-vertical'),

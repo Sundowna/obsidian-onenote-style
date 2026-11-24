@@ -135,8 +135,10 @@ describe('ribbon', () => {
       await browser.$('.onenote-tab[data-tab="home"]').click();
       await pause(200);
       expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
-      // Turned off again, a command leaves the ribbon open.
-      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+      // The command turns it off again; then a button leaves the ribbon open.
+      await withPlugin((plugin, app) => app.commands.executeCommandById('onenote-style:toggle-auto-collapse-ribbon'));
+      await pause(200);
+      expect(await withPlugin((plugin) => plugin.settings.autoCollapseRibbon)).toBe(false);
       await browser.$(btn(bold.id)).click();
       await pause(200);
       expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);

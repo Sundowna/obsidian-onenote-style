@@ -106,7 +106,7 @@ Needs Obsidian 1.10.6 or newer, on desktop: Windows, macOS or Linux.
 - **It restyles a little.** By default the plugin sets a purple accent colour, Segoe UI and Calibri. To keep your own look, turn off **OneNote theme** in the plugin's settings. The ribbon itself always follows your theme.
 - **Obsidian's own ribbon stays.** The icon strip on the left and Obsidian's menus are not touched.
 - **Collapse the ribbon** with a double-click on a tab or the small arrow at its right end.
-- **Auto-collapse:** turn on "Auto-collapse after a command" (right-click an empty part of the ribbon, or in the settings) and the ribbon folds away after each command. Click a tab to open it again.
+- **Auto-collapse:** turn on "Auto-collapse after a command" (right-click an empty part of the ribbon, in the settings, or with the command "Turn ribbon auto-collapse on or off", which you can also put on the ribbon or give a hotkey) and the ribbon folds away after each command. Click a tab to open it again.
 - **Subpages in Notebook Navigator** are indented and marked, but that plugin keeps its own sort order.
 - **Pages made with version 1.x** that turned a parent page into a folder can be converted back with the command **Turn page folder into plain subpages**.
 - **Not possible in Markdown:** OneNote's click-anywhere canvas. For that, **Insert → Canvas Page** creates an Obsidian Canvas. Ink, audio recording and OneNote import are not included.

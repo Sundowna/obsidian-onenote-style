@@ -610,9 +610,11 @@ export class RibbonView {
     }
     const ok = this.host.runRibbonCommand(found.item.command);
     // Auto-collapse: fold the ribbon away once a command has run. Not when the command
-    // itself changed the ribbon (collapsed it, or started customise mode).
+    // itself changed the ribbon (collapsed it, started customise mode, or turned
+    // auto-collapse on: the pressed button should stay in view).
     const state = this.host.state;
-    if (ok && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
+    const own = found.item.command === 'onenote-style:toggle-auto-collapse-ribbon';
+    if (ok && !own && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
   }
 
   /* ---------- right-click menus ---------- */

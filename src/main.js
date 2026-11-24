@@ -1815,6 +1815,10 @@ class OneNotePlugin extends Plugin {
       await this.setCodeWrapIndent(!this.settings.codeWrapIndent);
       new Notice(this.settings.codeWrapIndent ? 'Wrapped code lines indented' : 'Wrapped code lines start at the left edge');
     });
+    run('toggle-auto-collapse-ribbon', 'Turn ribbon auto-collapse on or off', async () => {
+      await this.setAutoCollapseRibbon(!this.settings.autoCollapseRibbon);
+      new Notice(this.settings.autoCollapseRibbon ? 'Ribbon auto-collapse on' : 'Ribbon auto-collapse off');
+    });
     run('toggle-section-tabs', 'Show or hide section tabs', async () => {
       this.settings.showSectionTabs = !this.settings.showSectionTabs;
       await this.persist();
@@ -1877,6 +1881,7 @@ class OneNotePlugin extends Plugin {
   async setAutoCollapseRibbon(on) {
     this.settings.autoCollapseRibbon = !!on;
     await this.persist();
+    if (this.ribbon) this.ribbon.refreshStates();
   }
 
   toggleRibbon() {

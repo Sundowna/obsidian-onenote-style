@@ -7,8 +7,8 @@
  * internals are reached only through internal.js.
  *
  * `host` is the plugin. The view needs from it:
- *   app, ribbonLayout, state.ribbonTab, state.ribbonCollapsed,
- *   saveRibbon(), runRibbonCommand(id), toggleRibbon(), ribbonButtonState(),
+ *   app, ribbonLayout, settings.autoCollapseRibbon, state.ribbonTab, state.ribbonCollapsed,
+ *   saveRibbon(), runRibbonCommand(id), toggleRibbon(), setAutoCollapseRibbon(on), ribbonButtonState(),
  *   promptText(title, value, cta), confirm(title, message, cta),
  *   exportRibbon(), importRibbon(), resetRibbon()
  */
@@ -608,7 +608,11 @@ export class RibbonView {
       new Notice(`"${this.labelOf(found.item, null)}" is not available. ${missingReason(this.app, found.item.command)}`);
       return;
     }
-    this.host.runRibbonCommand(found.item.command);
+    const ok = this.host.runRibbonCommand(found.item.command);
+    // Auto-collapse: fold the ribbon away once a command has run. Not when the command
+    // itself changed the ribbon (collapsed it, or started customise mode).
+    const state = this.host.state;
+    if (ok && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
   }
 
   /* ---------- right-click menus ---------- */
@@ -787,6 +791,8 @@ export class RibbonView {
     if (!onTab) {
       menu.addSeparator();
       menu.addItem((i) => i.setTitle('Collapse the ribbon').setIcon('chevron-up').onClick(() => this.host.toggleRibbon()));
+      const auto = !!this.host.settings.autoCollapseRibbon;
+      menu.addItem((i) => i.setTitle('Auto-collapse after a command').setIcon('fold-vertical').setChecked(auto).onClick(() => this.host.setAutoCollapseRibbon(!auto)));
     }
     return menu;
   }

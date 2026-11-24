@@ -116,6 +116,32 @@ describe('ribbon', () => {
       expect(r.focused).toBe(true);
     });
 
+    it('auto-collapse: the ribbon folds away after a command, and a tab click opens it again', async () => {
+      await rightClick('.onenote-ribbon .onenote-ribbon-collapse');
+      expect(await menuTitles()).toContain('Auto-collapse after a command');
+      await clickMenu('Auto-collapse after a command');
+      expect(await withPlugin((plugin) => plugin.settings.autoCollapseRibbon)).toBe(true);
+      await withPlugin((plugin, app) => {
+        const editor = app.workspace.activeEditor.editor;
+        editor.setValue('alpha beta gamma');
+        editor.setSelection({ line: 0, ch: 6 }, { line: 0, ch: 10 });
+        editor.focus();
+      });
+      const bold = await item('editor:toggle-bold');
+      await browser.$(btn(bold.id)).click();
+      await pause(200);
+      expect(await withPlugin((plugin, app) => app.workspace.activeEditor.editor.getValue())).toBe('alpha **beta** gamma');
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(true);
+      await browser.$('.onenote-tab[data-tab="home"]').click();
+      await pause(200);
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
+      // Turned off again, a command leaves the ribbon open.
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+      await browser.$(btn(bold.id)).click();
+      await pause(200);
+      expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
+    });
+
     it('a picker opens under the button that was clicked', async () => {
       await selectTab('insert');
       const table = await item('onenote-style:insert-table-grid');

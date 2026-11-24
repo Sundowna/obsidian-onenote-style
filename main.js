@@ -1261,7 +1261,9 @@ var RibbonView = class {
       new import_obsidian2.Notice(`"${this.labelOf(found.item, null)}" is not available. ${missingReason(this.app, found.item.command)}`);
       return;
     }
-    this.host.runRibbonCommand(found.item.command);
+    const ok = this.host.runRibbonCommand(found.item.command);
+    const state = this.host.state;
+    if (ok && this.host.settings.autoCollapseRibbon && !this.editing && !state.ribbonCollapsed) this.host.toggleRibbon();
   }
   /* ---------- right-click menus ---------- */
   onContextMenu(e) {
@@ -1440,6 +1442,8 @@ var RibbonView = class {
     if (!onTab) {
       menu.addSeparator();
       menu.addItem((i) => i.setTitle("Collapse the ribbon").setIcon("chevron-up").onClick(() => this.host.toggleRibbon()));
+      const auto = !!this.host.settings.autoCollapseRibbon;
+      menu.addItem((i) => i.setTitle("Auto-collapse after a command").setIcon("fold-vertical").setChecked(auto).onClick(() => this.host.setAutoCollapseRibbon(!auto)));
     }
     return menu;
   }
@@ -2784,6 +2788,8 @@ var DEFAULT_SETTINGS = {
   // under the file list, so subpages are always visible
   applyTheme: true,
   showRibbon: true,
+  autoCollapseRibbon: false,
+  // collapse the ribbon again after a button runs a command
   showSectionTabs: true,
   showNavigation: false,
   // notebooks/pages panes; off because Fluent OneNote + Notebook Navigator handle navigation
@@ -3306,6 +3312,7 @@ var OneNoteSettingTab = class extends import_obsidian5.PluginSettingTab {
       s.showRibbon = v;
       await changed(true);
     }));
+    new import_obsidian5.Setting(el).setName("Auto-collapse the ribbon").setDesc("The ribbon folds away after you click a command, leaving just the tabs. Click a tab to open it again.").addToggle((t) => t.setValue(s.autoCollapseRibbon).onChange((v) => p.setAutoCollapseRibbon(v)));
     new import_obsidian5.Setting(el).setName("Show section tabs").setDesc("Colored section tabs above the page.").addToggle((t) => t.setValue(s.showSectionTabs).onChange(async (v) => {
       s.showSectionTabs = v;
       await changed(true);
@@ -4450,6 +4457,10 @@ var OneNotePlugin = class extends import_obsidian5.Plugin {
     }
     this.sectionTabsEl = s.showSectionTabs ? bar.createDiv("onenote-section-tabs") : null;
     this.renderSectionTabs();
+  }
+  async setAutoCollapseRibbon(on) {
+    this.settings.autoCollapseRibbon = !!on;
+    await this.persist();
   }
   toggleRibbon() {
     this.state.ribbonCollapsed = !this.state.ribbonCollapsed;

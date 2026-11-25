@@ -19,7 +19,7 @@ import { fitGroups, fitTabs, LEVEL_FULL, LEVEL_SMALL, LEVEL_ICONS, LEVEL_COLLAPS
 import { findCommand, hotkeyText, missingReason, tintMenuItem } from './internal.js';
 import { CommandPickerModal, IconPickerModal } from './modals.js';
 import { pressedState } from './state.js';
-import { stripOpensRibbon, isDrag, windowPosition } from './titlebar.js';
+import { stripOpensRibbon, isDrag, windowPosition, snapZone, snapBounds, sameBounds } from './titlebar.js';
 
 const DRAG_THRESHOLD = 6;
 const TAB_HOVER_MS = 450;
@@ -55,6 +55,9 @@ export class RibbonView {
     this.onStripUp = this.onStripUp.bind(this);
     this.stripEl = null;
     this.stripPress = null;
+    // The bounds a strip drag last snapped this window to, and the size to restore when it
+    // is dragged away again ({ bounds, restore: { width, height } }), or null.
+    this.snapped = null;
   }
 
   get layout() { return this.host.ribbonLayout; }
@@ -676,9 +679,10 @@ export class RibbonView {
    * never gets clicks from. So while the strip can open the ribbon it is not a drag area
    * (class onr-strip-opens, see styles.css): a plain click opens the ribbon, and a press
    * that moves more than a few pixels moves the window instead, done here through
-   * Electron. Without Electron's window object (should Obsidian ever stop providing it)
-   * the strip stays a native drag area in frameless windows and only tab clicks open the
-   * ribbon there; where the strip isn't a drag area (framed windows, mobile) a click
+   * Electron, which also snaps it at the screen edges on release (snapAfterDrag), since
+   * Windows Snap only sees native drags. Without Electron's window object (should
+   * Obsidian ever stop providing it) the strip stays a native drag area in frameless
+   * windows and only tab clicks open the ribbon there; where the strip isn't a drag area (framed windows, mobile) a click
    * always works.
    */
   stripOpens() {
@@ -722,13 +726,21 @@ export class RibbonView {
       // No window to move (mobile, or a framed window the system title bar moves): the
       // press just isn't a click any more.
       if (!win || !this.doc.body.hasClass('is-hidden-frameless') || safe(() => win.isFullScreen())) { p.cancelled = true; return; }
+      const snapped = this.snapped;
+      this.snapped = null;
+      const ratio = Math.min(1, Math.max(0, e.clientX / Math.max(1, this.doc.defaultView.innerWidth)));
       if (safe(() => win.isMaximized())) {
         // Like the native drag: restore the window, keeping the pointer at the same
         // relative spot of the title bar.
-        const ratio = Math.min(1, Math.max(0, e.clientX / Math.max(1, this.doc.defaultView.innerWidth)));
         safe(() => win.unmaximize());
         const size = safe(() => win.getSize()) || [this.doc.defaultView.innerWidth];
         p.moving = { win, start: { ratio, width: size[0], y: p.screenY - p.clientY, screenX: p.screenX, screenY: p.screenY } };
+      } else if (snapped && sameBounds(safe(() => win.getBounds()), snapped.bounds)) {
+        // Dragging a window that a strip drag snapped to half or a quarter of the screen:
+        // like Windows, it gets back the size it had before the snap.
+        const { width, height } = snapped.restore;
+        safe(() => win.setSize(width, height));
+        p.moving = { win, start: { ratio, width, y: p.screenY - p.clientY, screenX: p.screenX, screenY: p.screenY } };
       } else {
         const pos = safe(() => win.getPosition());
         if (!pos) { p.cancelled = true; return; }
@@ -749,8 +761,34 @@ export class RibbonView {
     const p = this.stripPress;
     if (!p || e.pointerId !== p.id) return;
     const click = e.type === 'pointerup' && !p.moving && !p.cancelled;
+    const moved = e.type === 'pointerup' && p.moving && !p.cancelled ? p.moving : null;
     this.endStripPress();
     if (click && this.stripOpens()) this.host.toggleRibbon();
+    if (moved) this.snapAfterDrag(moved.win, e.screenX, e.screenY);
+  }
+
+  /*
+   * Windows Snap (and the Linux desktops' edge tiling) only react to the system's own
+   * title-bar drag. The strip drag above moves the window itself, so it snaps the window
+   * here instead when it is let go at a screen edge: left or right edge = that half, near a
+   * corner = that quarter, top edge = maximised.
+   */
+  snapAfterDrag(win, screenX, screenY) {
+    const body = this.doc.body;
+    if (!body.hasClass('mod-windows') && !body.hasClass('mod-linux')) return;
+    const screen = electronScreen();
+    if (!screen) return;
+    const at = { x: Math.round(screenX), y: Math.round(screenY) };
+    const display = safe(() => screen.getDisplayNearestPoint(at));
+    if (!display) return;
+    const zone = snapZone(at.x, at.y, display.bounds);
+    if (!zone) return;
+    const size = safe(() => win.getSize());
+    if (zone === 'maximize') { safe(() => win.maximize()); return; }
+    const bounds = snapBounds(zone, display.workArea);
+    if (!bounds) return;
+    safe(() => win.setBounds(bounds));
+    if (size) this.snapped = { bounds: safe(() => win.getBounds()) || bounds, restore: { width: size[0], height: size[1] } };
   }
 
   endStripPress() {
@@ -1181,6 +1219,20 @@ function findElectronWindow() {
     const remote = (electron && electron.remote) || req('@electron/remote');
     const win = remote && remote.getCurrentWindow && remote.getCurrentWindow();
     return win && typeof win.setPosition === 'function' ? win : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+/** Electron's screen module (display bounds and work areas), or null. */
+function electronScreen() {
+  try {
+    const req = window.require;
+    if (!req) return null;
+    const electron = req('electron');
+    const remote = (electron && electron.remote) || req('@electron/remote');
+    const screen = remote && remote.screen;
+    return screen && typeof screen.getDisplayNearestPoint === 'function' ? screen : null;
   } catch (err) {
     return null;
   }

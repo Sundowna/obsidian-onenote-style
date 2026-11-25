@@ -186,7 +186,7 @@ describe('ribbon', () => {
       expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(false);
     });
 
-    it('auto-collapse: a click on the empty part of the tab row opens the ribbon on the same tab', async () => {
+    it('F-001 auto-collapse: a click on the empty part of the tab row opens the ribbon on the same tab', async () => {
       const collapsed = () => browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting();
       const activeTab = () => browser.execute(() => document.querySelector('.onenote-tab.is-active')?.dataset.tab);
       await withPlugin((plugin) => plugin.setAutoCollapseRibbon(true));
@@ -220,6 +220,76 @@ describe('ribbon', () => {
       await withPlugin((plugin) => plugin.toggleRibbon());
       await browser.$('.onenote-tab[data-tab="home"]').click();
       await pause(200);
+    });
+
+    it('F-002 auto-collapse: a window dragged by the folded tab row snaps at the screen edges like Windows Snap', async () => {
+      // The plugin moves the window itself here (the strip can't be a native drag area while a
+      // click on it opens the ribbon), so Windows Snap never sees the drag: the plugin snaps.
+      await setSize(1000, 700);
+      await withPlugin((plugin) => plugin.setAutoCollapseRibbon(true));
+      await withPlugin((plugin) => { if (!plugin.state.ribbonCollapsed) plugin.toggleRibbon(); });
+      await pause(200);
+      expect(await browser.$('.onenote-topbar.onr-strip-opens').isExisting()).toBe(true);
+      // A drag on the strip with real-shaped pointer events, let go at screen position (toX, toY).
+      const dragStrip = (toX, toY) => browser.execute(async (tx, ty) => {
+        const el = document.querySelector('.onenote-tabrow-spacer');
+        const r = el.getBoundingClientRect();
+        const cx = r.left + 6, cy = r.top + r.height / 2;
+        const at = (sx, sy) => ({ bubbles: true, button: 0, pointerId: 7, clientX: cx, clientY: cy, screenX: sx, screenY: sy });
+        const sx = window.screenX + cx, sy = window.screenY + cy;
+        el.dispatchEvent(new PointerEvent('pointerdown', at(sx, sy)));
+        el.dispatchEvent(new PointerEvent('pointermove', at(sx + 30, sy + 10)));
+        await new Promise((res) => requestAnimationFrame(() => setTimeout(res, 50)));
+        el.dispatchEvent(new PointerEvent('pointermove', at(tx, ty)));
+        el.dispatchEvent(new PointerEvent('pointerup', at(tx, ty)));
+        await new Promise((res) => setTimeout(res, 150));
+      }, toX, toY);
+      const state = () => browser.execute(() => {
+        const { remote } = window.electron;
+        const win = remote.getCurrentWindow();
+        const b = win.getBounds();
+        const d = remote.screen.getDisplayNearestPoint({ x: b.x + 50, y: b.y + 20 });
+        return { bounds: b, maximized: win.isMaximized(), screen: d.bounds, work: d.workArea };
+      });
+      const near = (a, b) => ['x', 'y', 'width', 'height'].every((k) => Math.abs(a[k] - b[k]) <= 2);
+      try {
+        const before = await state();
+        const { screen, work } = before;
+        const midY = screen.y + Math.round(screen.height / 2);
+        // Left edge: the left half of the work area.
+        await dragStrip(screen.x, midY);
+        let s = await state();
+        const halfW = Math.round(work.width / 2);
+        expect({ near: near(s.bounds, { x: work.x, y: work.y, width: halfW, height: work.height }), got: s.bounds })
+          .toEqual({ near: true, got: s.bounds });
+        // The drag did not count as a click: the ribbon stays folded.
+        expect(await browser.$('.onenote-topbar.is-ribbon-collapsed').isExisting()).toBe(true);
+        // Dragged away into the middle: back to the size it had before the snap.
+        await dragStrip(screen.x + Math.round(screen.width / 2), midY);
+        s = await state();
+        expect({ w: Math.abs(s.bounds.width - before.bounds.width) <= 2, h: Math.abs(s.bounds.height - before.bounds.height) <= 2, got: s.bounds })
+          .toEqual({ w: true, h: true, got: s.bounds });
+        // Right edge near the top: the top-right quarter.
+        await dragStrip(screen.x + screen.width - 1, screen.y + 10 + 20);
+        s = await state();
+        expect({ near: near(s.bounds, { x: work.x + halfW, y: work.y, width: work.width - halfW, height: Math.round(work.height / 2) }), got: s.bounds })
+          .toEqual({ near: true, got: s.bounds });
+        // Top edge: maximised.
+        await dragStrip(screen.x + Math.round(screen.width / 2), screen.y);
+        s = await state();
+        expect(s.maximized).toBe(true);
+        // Let go in the middle of the screen: no snap, the window just moves.
+        await setSize(1000, 700);
+        await dragStrip(screen.x + Math.round(screen.width / 2), midY);
+        s = await state();
+        expect({ maximized: s.maximized, w: s.bounds.width, h: s.bounds.height }).toEqual({ maximized: false, w: before.bounds.width, h: before.bounds.height });
+      } finally {
+        await setSize(1000, 700);
+        await browser.execute(() => window.electron.remote.getCurrentWindow().center());
+        await withPlugin((plugin) => plugin.setAutoCollapseRibbon(false));
+        await withPlugin((plugin) => { if (plugin.state.ribbonCollapsed) plugin.toggleRibbon(); });
+        await pause(200);
+      }
     });
 
     it('a picker opens under the button that was clicked', async () => {

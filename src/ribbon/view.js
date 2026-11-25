@@ -20,6 +20,7 @@ import { findCommand, hotkeyText, missingReason, tintMenuItem } from './internal
 import { CommandPickerModal, IconPickerModal } from './modals.js';
 import { pressedState } from './state.js';
 import { stripOpensRibbon, isDrag, windowPosition, snapZone, snapBounds, sameBounds } from './titlebar.js';
+import { SnapPreview } from './snap-preview.js';
 
 const DRAG_THRESHOLD = 6;
 const TAB_HOVER_MS = 450;
@@ -137,6 +138,7 @@ export class RibbonView {
       this.topBar.removeEventListener('pointerdown', this.onPointerDown);
     }
     this.endStripPress();
+    if (this.snapPreview) { safe(() => this.snapPreview.destroy()); this.snapPreview = null; }
     if (this.stripEl) this.stripEl.removeEventListener('pointerdown', this.onStripDown);
     this.stripEl = null;
     if (this.listenDoc) {
@@ -733,8 +735,25 @@ export class RibbonView {
         // Like the native drag: restore the window, keeping the pointer at the same
         // relative spot of the title bar.
         safe(() => win.unmaximize());
+        if (safe(() => win.isMaximized())) {
+          // Windows ignores every way of un-maximising a window while the mouse button is
+          // held down on it (the window holds the mouse). Taking the focus away for a moment
+          // releases that hold; the window then no longer gets the pointer's moves for sure,
+          // so the drag follows the cursor position itself from here (followCursor).
+          safe(() => win.blur());
+          safe(() => win.unmaximize());
+          safe(() => win.focus());
+          if (safe(() => win.isMaximized())) { p.cancelled = true; return; }
+          p.detached = true;
+        }
         const size = safe(() => win.getSize()) || [this.doc.defaultView.innerWidth];
         p.moving = { win, start: { ratio, width: size[0], y: p.screenY - p.clientY, screenX: p.screenX, screenY: p.screenY } };
+        if (p.detached) {
+          p.last = { x: e.screenX, y: e.screenY };
+          this.moveWindow(p);
+          this.followCursor(p);
+          return;
+        }
       } else if (snapped && sameBounds(safe(() => win.getBounds()), snapped.bounds)) {
         // Dragging a window that a strip drag snapped to half or a quarter of the screen:
         // like Windows, it gets back the size it had before the snap.
@@ -747,24 +766,93 @@ export class RibbonView {
         p.moving = { win, start: { x: pos[0], y: pos[1], screenX: p.screenX, screenY: p.screenY } };
       }
     }
+    if (p.detached) {
+      // The button came up somewhere the window didn't hear about (outside it): the next
+      // move without the button ends the drag where the pointer is.
+      if (!(e.buttons & 1)) { this.finishStripDrag(p, e.screenX, e.screenY); return; }
+      return; // the cursor is followed by followCursor
+    }
     p.last = { x: e.screenX, y: e.screenY };
     if (p.frame) return;
     p.frame = window.requestAnimationFrame(() => {
       p.frame = 0;
       if (this.stripPress !== p || !p.moving) return;
-      const to = windowPosition(p.moving.start, p.last.x, p.last.y);
-      safe(() => p.moving.win.setPosition(to.x, to.y));
+      this.moveWindow(p);
     });
+  }
+
+  /** Puts the dragged window where the pointer (p.last) says, and shows where it would snap. */
+  moveWindow(p) {
+    const to = windowPosition(p.moving.start, p.last.x, p.last.y);
+    safe(() => p.moving.win.setPosition(to.x, to.y));
+    if (this.stripPress !== p) return;
+    const target = this.snapTarget(p.last.x, p.last.y);
+    if (target) {
+      if (!this.snapPreview) { const remote = electronRemote(); if (remote) this.snapPreview = new SnapPreview(remote); }
+      if (this.snapPreview) safe(() => this.snapPreview.show(target.bounds, p.moving.win));
+    } else if (this.snapPreview) safe(() => this.snapPreview.hide());
+  }
+
+  /**
+   * Where a strip drag let go at this screen position would snap the window:
+   * { zone, bounds } (bounds = the whole work area for 'maximize'), or null.
+   * Only on Windows and Linux, whose desktops snap title-bar drags.
+   */
+  snapTarget(screenX, screenY) {
+    const body = this.doc.body;
+    if (!body.hasClass('mod-windows') && !body.hasClass('mod-linux')) return null;
+    const screen = electronScreen();
+    if (!screen) return null;
+    const at = { x: Math.round(screenX), y: Math.round(screenY) };
+    const display = safe(() => screen.getDisplayNearestPoint(at));
+    if (!display) return null;
+    const zone = snapZone(at.x, at.y, display.bounds);
+    if (!zone) return null;
+    const bounds = zone === 'maximize' ? { ...display.workArea } : snapBounds(zone, display.workArea);
+    return bounds ? { zone, bounds } : null;
+  }
+
+  /*
+   * After a maximised window was restored by a strip drag (see onStripMove), the window
+   * may not get the pointer's moves any more: each frame reads the cursor position from
+   * the system instead, and the press ends on the pointer's next "up" anywhere in the
+   * window, or on a move without the button.
+   */
+  followCursor(p) {
+    const screen = electronScreen();
+    this.doc.addEventListener('pointermove', this.onStripMove, true);
+    this.doc.addEventListener('pointerup', this.onStripUp, true);
+    const tick = () => {
+      p.poll = 0;
+      if (this.stripPress !== p) return;
+      const c = screen && safe(() => screen.getCursorScreenPoint());
+      if (c && (!p.last || c.x !== p.last.x || c.y !== p.last.y)) {
+        p.last = { x: c.x, y: c.y };
+        this.moveWindow(p);
+      }
+      p.poll = window.requestAnimationFrame(tick);
+    };
+    p.poll = window.requestAnimationFrame(tick);
   }
 
   onStripUp(e) {
     const p = this.stripPress;
     if (!p || e.pointerId !== p.id) return;
+    // A restored window lost its hold on the mouse on purpose: that is not the end of the press.
+    if (p.detached && e.type !== 'pointerup') return;
+    if (e.type === 'pointerup' && p.moving && !p.cancelled) { this.finishStripDrag(p, e.screenX, e.screenY); return; }
     const click = e.type === 'pointerup' && !p.moving && !p.cancelled;
-    const moved = e.type === 'pointerup' && p.moving && !p.cancelled ? p.moving : null;
     this.endStripPress();
     if (click && this.stripOpens()) this.host.toggleRibbon();
-    if (moved) this.snapAfterDrag(moved.win, e.screenX, e.screenY);
+  }
+
+  /** The window was let go after a strip drag: put it at the pointer, then snap if at an edge. */
+  finishStripDrag(p, screenX, screenY) {
+    const win = p.moving.win;
+    this.endStripPress();
+    p.last = { x: screenX, y: screenY };
+    this.moveWindow(p);
+    this.snapAfterDrag(win, screenX, screenY);
   }
 
   /*
@@ -774,19 +862,11 @@ export class RibbonView {
    * corner = that quarter, top edge = maximised.
    */
   snapAfterDrag(win, screenX, screenY) {
-    const body = this.doc.body;
-    if (!body.hasClass('mod-windows') && !body.hasClass('mod-linux')) return;
-    const screen = electronScreen();
-    if (!screen) return;
-    const at = { x: Math.round(screenX), y: Math.round(screenY) };
-    const display = safe(() => screen.getDisplayNearestPoint(at));
-    if (!display) return;
-    const zone = snapZone(at.x, at.y, display.bounds);
-    if (!zone) return;
+    const target = this.snapTarget(screenX, screenY);
+    if (!target) return;
     const size = safe(() => win.getSize());
-    if (zone === 'maximize') { safe(() => win.maximize()); return; }
-    const bounds = snapBounds(zone, display.workArea);
-    if (!bounds) return;
+    if (target.zone === 'maximize') { safe(() => win.maximize()); return; }
+    const { bounds } = target;
     safe(() => win.setBounds(bounds));
     if (size) this.snapped = { bounds: safe(() => win.getBounds()) || bounds, restore: { width: size[0], height: size[1] } };
   }
@@ -796,6 +876,12 @@ export class RibbonView {
     if (!p) return;
     this.stripPress = null;
     if (p.frame) window.cancelAnimationFrame(p.frame);
+    if (p.poll) window.cancelAnimationFrame(p.poll);
+    if (this.snapPreview) safe(() => this.snapPreview.hide());
+    if (this.doc) {
+      this.doc.removeEventListener('pointermove', this.onStripMove, true);
+      this.doc.removeEventListener('pointerup', this.onStripUp, true);
+    }
     const el = this.stripEl;
     if (!el) return;
     el.removeEventListener('pointermove', this.onStripMove);
@@ -1224,18 +1310,23 @@ function findElectronWindow() {
   }
 }
 
-/** Electron's screen module (display bounds and work areas), or null. */
-function electronScreen() {
+/** Electron's remote module (main-process objects from this window), or null. */
+function electronRemote() {
   try {
     const req = window.require;
     if (!req) return null;
     const electron = req('electron');
-    const remote = (electron && electron.remote) || req('@electron/remote');
-    const screen = remote && remote.screen;
-    return screen && typeof screen.getDisplayNearestPoint === 'function' ? screen : null;
+    return (electron && electron.remote) || req('@electron/remote') || null;
   } catch (err) {
     return null;
   }
+}
+
+/** Electron's screen module (display bounds, work areas, the cursor), or null. */
+function electronScreen() {
+  const remote = electronRemote();
+  const screen = remote && remote.screen;
+  return screen && typeof screen.getDisplayNearestPoint === 'function' ? screen : null;
 }
 
 function safe(fn) {
